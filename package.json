@@ -2,12 +2,16 @@
   "name": "bubblebud-premium-storefront",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev --webpack --hostname 127.0.0.1",
     "build": "next build --webpack",
-    "start": "next start --hostname 127.0.0.1"
+    "start": "next start --hostname 127.0.0.1",
+    "seed:products": "node scripts/seed-products.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.106.1",
     "@tailwindcss/postcss": "^4.3.0",
     "autoprefixer": "^10.5.0",
     "clsx": "^2.1.1",
@@ -17,6 +21,9 @@
     "postcss": "^8.5.15",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "tailwindcss": "^4.3.0"
+    "resend": "^6.12.3",
+    "stripe": "^22.1.1",
+    "tailwindcss": "^4.3.0",
+    "zod": "^4.4.3"
   }
 }

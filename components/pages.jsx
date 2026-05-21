@@ -18,7 +18,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { categories, formatMoney, getRelatedProducts, getReviewSummary, products, testimonials } from "@/lib/products";
+import { categories, formatMoney, getRelatedProducts, getReviewSummary, products } from "@/lib/products";
 import { useCommerce } from "@/components/commerce-context";
 import { TrustStrip } from "@/components/site-frame";
 
@@ -42,12 +42,12 @@ const detailIntroByCategory = {
     "A soft collectible plush made for gifting, display, and cozy everyday comfort.",
 };
 
-export function HomePage() {
+export function HomePage({ products: catalog = products }) {
   return (
     <>
       <HeroSection />
       <FeaturedCategories />
-      <BestSellers />
+      <BestSellers products={catalog} />
       <PromoBanner />
       <TestimonialSection />
       <WhyChoose />
@@ -104,10 +104,10 @@ function FeaturedCategories() {
   );
 }
 
-function BestSellers() {
+function BestSellers({ products: catalog }) {
   const [filter, setFilter] = useState("All");
   const options = ["All", "Beauty", "Accessories", "Lifestyle", "Tech", "Plushies"];
-  const shown = products
+  const shown = catalog
     .filter((product) => filter === "All" || product.category === filter)
     .sort((a, b) => b.rating - a.rating)
     .slice(0, 4);
@@ -144,50 +144,21 @@ function PromoBanner() {
 }
 
 function TestimonialSection() {
-  const [active, setActive] = useState(0);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setActive((value) => (value + 1) % testimonials.length), 4200);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const testimonial = testimonials[active];
-
   return (
     <section className="section-wrap reviews-showcase">
-      <SectionHeading eyebrow="Trust, built in" title="Customer reviews" copy="Verified buyer feedback with a calm premium presentation." />
+      <SectionHeading eyebrow="Trust, built in" title="Verified reviews only" copy="BubbleBud only accepts public reviews from logged-in customers with delivered orders." />
       <div className="testimonial-shell">
-        <AnimatePresence mode="wait">
-          <motion.article
-            key={testimonial.name}
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -24 }}
-            transition={{ duration: 0.35 }}
-            className="testimonial-card"
-          >
-            <img src={testimonial.image} alt="" />
-            <div>
-              <Stars rating={5} />
-              <p>{testimonial.text}</p>
-              <strong>{testimonial.name}</strong>
-              <span>
-                <BadgeCheck size={16} /> {testimonial.role}
-              </span>
-            </div>
-          </motion.article>
-        </AnimatePresence>
-        <div className="testimonial-dots">
-          {testimonials.map((item, index) => (
-            <button
-              className={index === active ? "is-active" : ""}
-              type="button"
-              aria-label={`Show review from ${item.name}`}
-              key={item.name}
-              onClick={() => setActive(index)}
-            />
-          ))}
-        </div>
+        <article className="testimonial-card">
+          <img src="/assets/product-laptop-14.jpg" alt="" />
+          <div>
+            <Stars rating={5} />
+            <p>Reviews unlock after purchase, delivery, and account verification.</p>
+            <strong>Verified purchase policy</strong>
+            <span>
+              <BadgeCheck size={16} /> One review per customer per product
+            </span>
+          </div>
+        </article>
       </div>
     </section>
   );
@@ -246,6 +217,7 @@ function SocialGallery() {
 function NewsletterSection() {
   const [email, setEmail] = useState("");
   const [done, setDone] = useState(false);
+  const [message, setMessage] = useState("");
 
   return (
     <section className="newsletter-section">
@@ -256,7 +228,18 @@ function NewsletterSection() {
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          setDone(true);
+          setMessage("");
+          fetch("/api/newsletter", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+          })
+            .then(async (response) => {
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.error || "Subscription failed.");
+              setDone(true);
+            })
+            .catch((error) => setMessage(error.message));
         }}
       >
         <Mail size={20} />
@@ -264,11 +247,12 @@ function NewsletterSection() {
         <button type="submit">Subscribe</button>
       </form>
       {done ? <p className="form-note">You are on the list.</p> : null}
+      {message ? <p className="form-error">{message}</p> : null}
     </section>
   );
 }
 
-export function ShopPage() {
+export function ShopPage({ products: catalog = products }) {
   const { hydrated, wishlist } = useCommerce();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -293,7 +277,7 @@ export function ShopPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const searched = products.filter((product) => {
+    const searched = catalog.filter((product) => {
       const haystack = `${product.title} ${product.category} ${product.tags.join(" ")}`.toLowerCase();
       const matchesSearch = haystack.includes(query.toLowerCase());
       const matchesCategory = category === "All" || product.category === category;
@@ -309,7 +293,7 @@ export function ShopPage() {
       if (sort === "newest") return Number(b.badge === "New") - Number(a.badge === "New");
       return Number(Boolean(b.compareAt)) - Number(Boolean(a.compareAt));
     });
-  }, [category, maxPrice, query, sort, wishlist, wishlistOnly]);
+  }, [catalog, category, maxPrice, query, sort, wishlist, wishlistOnly]);
 
   const filterPanel = (
     <FilterPanel
@@ -592,15 +576,42 @@ function ProductTabs({ product, active, setActive }) {
 }
 
 function ReviewPanel({ product }) {
-  const { deleteReview, getReviews, saveReview } = useCommerce();
-  const [form, setForm] = useState({ id: "", name: "", title: "", body: "", rating: 5 });
-  const reviews = getReviews(product);
-  const summary = getReviewSummary(product, reviews.filter((review) => review.canEdit));
+  const { account } = useCommerce();
+  const [form, setForm] = useState({ title: "", body: "", rating: 5 });
+  const [reviews, setReviews] = useState([]);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const loadReviews = async () => {
+    setLoading(true);
+    const response = await fetch(`/api/reviews?productId=${encodeURIComponent(product.id)}`);
+    const data = response.ok ? await response.json() : { reviews: [] };
+    setReviews(data.reviews || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadReviews();
+  }, [product.id]);
+
+  const summary = getReviewSummary({ rating: 0, reviewCount: 0, reviews }, []);
 
   const submitReview = (event) => {
     event.preventDefault();
-    saveReview(product.id, form);
-    setForm({ id: "", name: "", title: "", body: "", rating: 5 });
+    setMessage("");
+    fetch("/api/reviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId: product.id, ...form }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Review could not be saved.");
+        setMessage("Review saved as a verified purchase review.");
+        setForm({ title: "", body: "", rating: 5 });
+        loadReviews();
+      })
+      .catch((error) => setMessage(error.message));
   };
 
   return (
@@ -612,23 +623,25 @@ function ReviewPanel({ product }) {
         <span>{summary.count} total reviews</span>
       </div>
       <form className="review-form" onSubmit={submitReview}>
-        <h3>{form.id ? "Edit your review" : "Give a star review"}</h3>
+        <h3>Leave a verified review</h3>
+        {!account ? (
+          <p className="form-note">
+            <Link href="/login">Log in</Link> after your delivered purchase to review this product.
+          </p>
+        ) : null}
         <StarPicker value={form.rating} onChange={(rating) => setForm((value) => ({ ...value, rating }))} />
-        <input value={form.name} onChange={(event) => setForm((value) => ({ ...value, name: event.target.value }))} placeholder="Name (optional)" />
         <input value={form.title} onChange={(event) => setForm((value) => ({ ...value, title: event.target.value }))} placeholder="Title (optional)" />
         <textarea value={form.body} onChange={(event) => setForm((value) => ({ ...value, body: event.target.value }))} placeholder="Review text (optional)" />
         <div className="review-form-actions">
-          <button className="primary-button" type="submit">
-            {form.id ? "Update review" : "Submit review"}
+          <button className="primary-button" type="submit" disabled={!account}>
+            Submit verified review
           </button>
-          {form.id ? (
-            <button className="secondary-button" type="button" onClick={() => setForm({ id: "", name: "", title: "", body: "", rating: 5 })}>
-              Cancel edit
-            </button>
-          ) : null}
         </div>
+        {message ? <p className={message.includes("saved") ? "form-note" : "form-error"}>{message}</p> : null}
       </form>
       <div className="review-list">
+        {loading ? <p className="form-note">Loading verified reviews...</p> : null}
+        {!loading && !reviews.length ? <p className="form-note">No verified purchase reviews yet.</p> : null}
         {reviews.map((review) => (
           <article className="review-card" key={review.id}>
             <div className="review-card-top">
@@ -643,16 +656,6 @@ function ReviewPanel({ product }) {
             {review.body ? <p>{review.body}</p> : null}
             <div className="review-card-footer">
               <strong>{review.name}</strong>
-              {review.canEdit ? (
-                <div className="review-actions">
-                  <button type="button" onClick={() => setForm(review)}>
-                    Edit
-                  </button>
-                  <button type="button" onClick={() => deleteReview(product.id, review.id)}>
-                    Delete
-                  </button>
-                </div>
-              ) : null}
             </div>
           </article>
         ))}
@@ -661,9 +664,10 @@ function ReviewPanel({ product }) {
   );
 }
 
-export function AccountPage() {
-  const { account, setAccount, wishlist } = useCommerce();
-  const [tab, setTab] = useState("Login");
+export function AccountPage({ initialTab = "Login" }) {
+  const { account, signOut, wishlist } = useCommerce();
+  const [tab, setTab] = useState(initialTab);
+  const [orders, setOrders] = useState([]);
   const wishlistProducts = products.filter((product) => wishlist.includes(product.id));
   const accountTabs = account ? ["Order history", "Track order", "Wishlist", "Addresses"] : ["Login", "Register", "Forgot password"];
 
@@ -672,6 +676,14 @@ export function AccountPage() {
       setTab("Order history");
     }
   }, [account, tab]);
+
+  useEffect(() => {
+    if (!account) return;
+    fetch("/api/account/orders")
+      .then((response) => (response.ok ? response.json() : { orders: [] }))
+      .then((data) => setOrders(data.orders || []))
+      .catch(() => setOrders([]));
+  }, [account]);
 
   return (
     <section className="account-page">
@@ -685,6 +697,9 @@ export function AccountPage() {
             <div className="account-mini-card">
               <strong>{account.name}</strong>
               <span>{account.email}</span>
+              <button className="text-button" type="button" onClick={signOut}>
+                Log out
+              </button>
             </div>
           ) : null}
           {accountTabs.map((item) => (
@@ -695,9 +710,9 @@ export function AccountPage() {
         </aside>
         <div className="account-panel">
           {tab === "Login" || tab === "Register" || tab === "Forgot password" ? (
-            <AuthForm mode={tab} account={account} setAccount={setAccount} />
+            <AuthForm mode={tab} account={account} />
           ) : null}
-          {tab === "Order history" ? <OrderHistory onTrack={() => setTab("Track order")} /> : null}
+          {tab === "Order history" ? <OrderHistory orders={orders} onTrack={() => setTab("Track order")} /> : null}
           {tab === "Track order" ? <TrackOrderPanel compact /> : null}
           {tab === "Wishlist" ? <ProductGrid products={wishlistProducts.length ? wishlistProducts : products.slice(0, 3)} /> : null}
           {tab === "Addresses" ? <AddressBook /> : null}
@@ -707,40 +722,79 @@ export function AccountPage() {
   );
 }
 
-function AuthForm({ mode, account, setAccount }) {
+function AuthForm({ mode, account }) {
+  const { authEnabled, resetPassword, signIn, signInWithProvider, signUp } = useCommerce();
   const [email, setEmail] = useState(account?.email || "");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [message, setMessage] = useState("");
   const title = mode === "Forgot password" ? "Reset password" : mode;
 
+  const submit = async (event) => {
+    event.preventDefault();
+    setMessage("");
+    try {
+      if (mode === "Register") {
+        await signUp({ email, password, name });
+        setMessage("Check your email to verify your BubbleBud account.");
+      } else if (mode === "Forgot password") {
+        await resetPassword(email);
+        setMessage("Password reset email sent.");
+      } else {
+        await signIn({ email, password });
+        setMessage("Logged in.");
+      }
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
   return (
-    <form
-      className="auth-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setAccount({ email, name: email.split("@")[0] || "BubbleBud customer" });
-      }}
-    >
+    <form className="auth-form" onSubmit={submit}>
       <h2>{title}</h2>
-      {mode === "Register" ? <input required placeholder="Full name" /> : null}
+      {!authEnabled ? <p className="form-error">Connect Supabase environment variables to enable real accounts.</p> : null}
+      {mode === "Register" ? <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" /> : null}
       <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" />
-      {mode !== "Forgot password" ? <input required type="password" placeholder="Password" /> : null}
-      <button className="primary-button" type="submit">
+      {mode !== "Forgot password" ? <input required type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" /> : null}
+      <button className="primary-button" type="submit" disabled={!authEnabled}>
         {mode === "Forgot password" ? "Send reset link" : mode}
       </button>
+      {mode !== "Forgot password" ? (
+        <div className="auth-provider-row">
+          <button className="secondary-button" type="button" disabled={!authEnabled} onClick={() => signInWithProvider("google")}>
+            Continue with Google
+          </button>
+          <button className="secondary-button" type="button" disabled={!authEnabled} onClick={() => signInWithProvider("apple")}>
+            Continue with Apple
+          </button>
+        </div>
+      ) : null}
+      {message ? <p className={message.includes("sent") || message.includes("Check") || message.includes("Logged") ? "form-note" : "form-error"}>{message}</p> : null}
       {account ? <p className="form-note">Signed in as {account.email}</p> : null}
     </form>
   );
 }
 
-function OrderHistory({ onTrack }) {
+function OrderHistory({ orders, onTrack }) {
+  if (!orders.length) {
+    return (
+      <div className="empty-state inline">
+        <PackageCheck size={32} />
+        <h3>No orders yet.</h3>
+        <p>Paid Stripe orders will appear here after checkout.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="order-list">
-      {["BB-1042", "BB-1038"].map((order, index) => (
-        <article key={order}>
+      {orders.map((order) => (
+        <article key={order.id}>
           <div>
-            <strong>{order}</strong>
-            <span>{index ? "Delivered" : "In transit"}</span>
+            <strong>{order.order_number}</strong>
+            <span>{order.status}</span>
           </div>
-          <p>{index ? "Portable Makeup Bag" : "Crochet Rose Flower Bouquet"}</p>
+          <p>{order.order_items?.map((item) => `${item.quantity}x ${item.product_title}`).join(", ")}</p>
           <button type="button" onClick={onTrack}>Track order</button>
         </article>
       ))}
@@ -749,16 +803,68 @@ function OrderHistory({ onTrack }) {
 }
 
 function AddressBook() {
+  const [addresses, setAddresses] = useState([]);
+  const [form, setForm] = useState({
+    label: "Home",
+    fullName: "",
+    line1: "",
+    line2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "US",
+    phone: "",
+  });
+  const [message, setMessage] = useState("");
+
+  const loadAddresses = () => {
+    fetch("/api/account/addresses")
+      .then((response) => (response.ok ? response.json() : { addresses: [] }))
+      .then((data) => setAddresses(data.addresses || []))
+      .catch(() => setAddresses([]));
+  };
+
+  useEffect(() => {
+    loadAddresses();
+  }, []);
+
+  const saveAddress = (event) => {
+    event.preventDefault();
+    setMessage("");
+    fetch("/api/account/addresses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Address could not be saved.");
+        setMessage("Address saved.");
+        setForm({ label: "Home", fullName: "", line1: "", line2: "", city: "", state: "", postalCode: "", country: "US", phone: "" });
+        loadAddresses();
+      })
+      .catch((error) => setMessage(error.message));
+  };
+
   return (
     <div className="address-book">
       <h2>Saved addresses</h2>
-      <article>
-        <strong>Home</strong>
-        <p>123 BubbleBud Lane, Austin, TX</p>
-      </article>
-      <button className="secondary-button" type="button">
-        Add address
-      </button>
+      {addresses.map((address) => (
+        <article key={address.id}>
+          <strong>{address.label}</strong>
+          <p>{address.full_name} - {address.line1}, {address.city}, {address.state} {address.postal_code}</p>
+        </article>
+      ))}
+      <form className="auth-form" onSubmit={saveAddress}>
+        <input required value={form.fullName} onChange={(event) => setForm((value) => ({ ...value, fullName: event.target.value }))} placeholder="Full name" />
+        <input required value={form.line1} onChange={(event) => setForm((value) => ({ ...value, line1: event.target.value }))} placeholder="Address line 1" />
+        <input value={form.line2} onChange={(event) => setForm((value) => ({ ...value, line2: event.target.value }))} placeholder="Address line 2" />
+        <input required value={form.city} onChange={(event) => setForm((value) => ({ ...value, city: event.target.value }))} placeholder="City" />
+        <input required value={form.state} onChange={(event) => setForm((value) => ({ ...value, state: event.target.value }))} placeholder="State" />
+        <input required value={form.postalCode} onChange={(event) => setForm((value) => ({ ...value, postalCode: event.target.value }))} placeholder="ZIP code" />
+        <button className="primary-button" type="submit">Save address</button>
+        {message ? <p className={message.includes("saved") ? "form-note" : "form-error"}>{message}</p> : null}
+      </form>
     </div>
   );
 }
@@ -776,7 +882,9 @@ export function TrackOrderPage() {
 }
 
 function TrackOrderPanel({ compact = false }) {
-  const [result, setResult] = useState(false);
+  const [form, setForm] = useState({ orderNumber: "", email: "" });
+  const [result, setResult] = useState(null);
+  const [message, setMessage] = useState("");
 
   return (
     <div className={compact ? "track-panel is-compact" : "track-panel"}>
@@ -784,24 +892,45 @@ function TrackOrderPanel({ compact = false }) {
         className="track-form"
         onSubmit={(event) => {
           event.preventDefault();
-          setResult(true);
+          setMessage("");
+          fetch("/api/orders/track", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(form),
+          })
+            .then(async (response) => {
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.error || "Order not found.");
+              setResult(data.order);
+            })
+            .catch((error) => {
+              setResult(null);
+              setMessage(error.message);
+            });
         }}
       >
-        <input required placeholder="Order number" />
-        <input required type="email" placeholder="Email address" />
+        <input required value={form.orderNumber} onChange={(event) => setForm((value) => ({ ...value, orderNumber: event.target.value }))} placeholder="Order number" />
+        <input required type="email" value={form.email} onChange={(event) => setForm((value) => ({ ...value, email: event.target.value }))} placeholder="Email address" />
         <button className="primary-button" type="submit">
           Track order
         </button>
       </form>
+      {message ? <p className="form-error">{message}</p> : null}
       {result ? (
         <div className="tracking-card">
-          {["Order confirmed", "Packed with care", "In transit", "Out for delivery"].map((step, index) => (
-            <div className={index < 3 ? "is-done" : ""} key={step}>
+          {["pending", "paid", "processing", "shipped", "delivered"].map((step) => {
+            const steps = ["pending", "paid", "processing", "shipped", "delivered"];
+            const currentIndex = Math.max(0, steps.indexOf(result.status));
+            const stepIndex = steps.indexOf(step);
+            return (
+            <div className={currentIndex >= stepIndex ? "is-done" : ""} key={step}>
               <span />
               <strong>{step}</strong>
-              <small>{index < 3 ? "Complete" : "Estimated tomorrow"}</small>
+              <small>{result.tracking_number && step === "shipped" ? result.tracking_number : result.status === step ? "Current status" : "Updates when available"}</small>
             </div>
-          ))}
+            );
+          })}
+          {result.tracking_url ? <a className="secondary-link" href={result.tracking_url}>Open carrier tracking</a> : null}
         </div>
       ) : null}
     </div>
@@ -837,8 +966,26 @@ export function InfoPage({ contact = false, contactEmail = "sytnix479@gmail.com"
         .join("\n")
     );
 
-    window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`;
-    setSent(true);
+    fetch("/api/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: message.name,
+        email: message.email,
+        orderNumber: message.order,
+        subject: message.subject || "BubbleBud customer message",
+        message: message.text,
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Message could not be sent.");
+        setSent(true);
+      })
+      .catch(() => {
+        window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`;
+        setSent(true);
+      });
   };
 
   return (
@@ -888,16 +1035,16 @@ export function InfoPage({ contact = false, contactEmail = "sytnix479@gmail.com"
           <input required value={message.subject} onChange={(event) => updateMessage("subject", event.target.value)} placeholder="Subject" />
           <textarea required value={message.text} onChange={(event) => updateMessage("text", event.target.value)} placeholder="Write your message" />
           <button className="primary-button" type="submit">
-            Open email message
+            Send message
           </button>
-          {sent ? <p className="form-note">Your email app should open with this message ready to send.</p> : null}
+          {sent ? <p className="form-note">Message sent. If email delivery is not configured yet, your email app will open as backup.</p> : null}
         </form>
       ) : null}
     </section>
   );
 }
 
-function ProductGrid({ products: list }) {
+export function ProductGrid({ products: list }) {
   if (!list.length) {
     return (
       <div className="empty-state inline">

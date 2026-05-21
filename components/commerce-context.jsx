@@ -1,10 +1,10 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createBrowserSupabase } from "@/lib/supabase/browser";
 
 const CART_KEY = "bubblebud-next-cart";
 const WISHLIST_KEY = "bubblebud-next-wishlist";
-const REVIEWS_KEY = "bubblebud-next-reviews";
 const RECENT_KEY = "bubblebud-next-recent";
 const THEME_KEY = "bubblebud-next-theme";
 
@@ -27,25 +27,47 @@ const writeStorage = (key, value) => {
 };
 
 export function CommerceProvider({ children }) {
+  const [supabase] = useState(() => createBrowserSupabase());
   const [hydrated, setHydrated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [cart, setCart] = useState([]);
   const [wishlist, setWishlist] = useState([]);
-  const [reviews, setReviews] = useState({});
   const [recent, setRecent] = useState([]);
   const [theme, setTheme] = useState("light");
   const [cartOpen, setCartOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [quickViewProduct, setQuickViewProduct] = useState(null);
-  const [account, setAccount] = useState(null);
+  const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   useEffect(() => {
     setCart(readStorage(CART_KEY, []));
     setWishlist(readStorage(WISHLIST_KEY, []));
-    setReviews(readStorage(REVIEWS_KEY, {}));
     setRecent(readStorage(RECENT_KEY, []));
     setTheme(readStorage(THEME_KEY, "light"));
     setHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthReady(true);
+      return undefined;
+    }
+
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user || null);
+      setAuthReady(true);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -59,11 +81,6 @@ export function CommerceProvider({ children }) {
 
   useEffect(() => {
     if (!hydrated) return;
-    writeStorage(REVIEWS_KEY, reviews);
-  }, [reviews, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
     writeStorage(RECENT_KEY, recent);
   }, [recent, hydrated]);
 
@@ -72,6 +89,14 @@ export function CommerceProvider({ children }) {
     writeStorage(THEME_KEY, theme);
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme, hydrated]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/wishlist")
+      .then((response) => (response.ok ? response.json() : { productIds: [] }))
+      .then((data) => setWishlist(data.productIds || []))
+      .catch(() => {});
+  }, [user]);
 
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0), [cart]);
@@ -102,8 +127,17 @@ export function CommerceProvider({ children }) {
 
   const clearCart = () => setCart([]);
 
-  const toggleWishlist = (productId) => {
-    setWishlist((items) => (items.includes(productId) ? items.filter((id) => id !== productId) : [productId, ...items]));
+  const toggleWishlist = async (productId) => {
+    const isActive = wishlist.includes(productId);
+    setWishlist((items) => (isActive ? items.filter((id) => id !== productId) : [productId, ...items]));
+
+    if (!user) return;
+
+    await fetch("/api/wishlist", {
+      method: isActive ? "DELETE" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId }),
+    });
   };
 
   const isWishlisted = (productId) => wishlist.includes(productId);
@@ -112,61 +146,112 @@ export function CommerceProvider({ children }) {
     setRecent((items) => [productId, ...items.filter((id) => id !== productId)].slice(0, 8));
   };
 
-  const getReviews = (product) => [
-    ...(reviews[product.id] || []).map((review) => ({ ...review, canEdit: true, verified: true })),
-    ...(product.reviews || []).map((review) => ({ ...review, canEdit: false })),
-  ];
-
-  const saveReview = (productId, review) => {
-    const payload = {
-      id: review.id || `review-${Date.now()}`,
-      name: review.name?.trim() || "BubbleBud customer",
-      title: review.title?.trim() || "",
-      body: review.body?.trim() || "",
-      rating: Math.max(1, Math.min(5, Number(review.rating || 5))),
-      date: new Date().toISOString().slice(0, 10),
-      verified: true,
-    };
-
-    setReviews((allReviews) => {
-      const list = allReviews[productId] || [];
-      const exists = list.some((item) => item.id === payload.id);
-      return {
-        ...allReviews,
-        [productId]: exists ? list.map((item) => (item.id === payload.id ? payload : item)) : [payload, ...list],
-      };
-    });
+  const signIn = async ({ email, password }) => {
+    if (!supabase) throw new Error("Supabase is not configured.");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
   };
 
-  const deleteReview = (productId, reviewId) => {
-    setReviews((allReviews) => ({
-      ...allReviews,
-      [productId]: (allReviews[productId] || []).filter((review) => review.id !== reviewId),
-    }));
+  const signUp = async ({ email, password, name }) => {
+    if (!supabase) throw new Error("Supabase is not configured.");
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: name },
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+    if (error) throw error;
+  };
+
+  const signInWithProvider = async (provider) => {
+    if (!supabase) throw new Error("Supabase is not configured.");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+    if (error) throw error;
+  };
+
+  const resetPassword = async (email) => {
+    if (!supabase) throw new Error("Supabase is not configured.");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/account`,
+    });
+    if (error) throw error;
+  };
+
+  const signOut = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  const startCheckout = async ({ email, discountCode } = {}) => {
+    setCheckoutError("");
+    setCheckoutLoading(true);
+    try {
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerEmail: user?.email || email,
+          discountCode,
+          items: cart.map((item) => ({
+            productId: item.product.id,
+            variant: item.variant,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Checkout could not start.");
+      window.location.href = data.url;
+    } catch (error) {
+      setCheckoutError(error.message);
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   const value = {
-    account,
+    account: user
+      ? {
+          id: user.id,
+          email: user.email,
+          name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0],
+        }
+      : null,
     addRecentlyViewed,
     addToCart,
+    authEnabled: Boolean(supabase),
+    authReady,
     cart,
     cartCount,
     cartOpen,
+    checkoutError,
+    checkoutLoading,
     clearCart,
-    deleteReview,
-    getReviews,
     hydrated,
     isWishlisted,
     quickViewProduct,
     recent,
     removeFromCart,
-    saveReview,
+    resetPassword,
     searchOpen,
-    setAccount,
     setCartOpen,
     setQuickViewProduct,
     setSearchOpen,
     setTheme,
+    signIn,
+    signInWithProvider,
+    signOut,
+    signUp,
+    startCheckout,
     subtotal,
     theme,
     toggleWishlist,

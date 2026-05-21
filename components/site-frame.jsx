@@ -66,7 +66,7 @@ function AnnouncementBar() {
     <div className="announcement-bar" aria-label="Store announcement">
       <div className="announcement-track">
         <span>Free Shipping on Orders Over $50</span>
-        <span>10% Off First Orders With Code BUBBLE10</span>
+        <span>Secure Checkout With Stripe</span>
         <span>Easy Returns Within 30 Days</span>
       </div>
     </div>
@@ -197,11 +197,21 @@ function SearchDialog({ onClose }) {
 }
 
 function CartDrawer({ onClose }) {
-  const { cart, clearCart, removeFromCart, subtotal, updateCartQuantity } = useCommerce();
+  const {
+    account,
+    cart,
+    checkoutError,
+    checkoutLoading,
+    clearCart,
+    removeFromCart,
+    startCheckout,
+    subtotal,
+    updateCartQuantity,
+  } = useCommerce();
   const [discount, setDiscount] = useState("");
-  const appliedDiscount = discount.trim().toUpperCase() === "BUBBLE10" ? subtotal * 0.1 : 0;
-  const shipping = subtotal - appliedDiscount > 50 || subtotal === 0 ? 0 : 5.95;
-  const total = Math.max(0, subtotal - appliedDiscount + shipping);
+  const [email, setEmail] = useState("");
+  const shipping = subtotal > 50 || subtotal === 0 ? 0 : 5.95;
+  const total = Math.max(0, subtotal + shipping);
 
   return (
     <motion.div className="drawer-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -257,8 +267,14 @@ function CartDrawer({ onClose }) {
         <div className="cart-summary">
           <label className="discount-field">
             <span>Discount code</span>
-            <input value={discount} onChange={(event) => setDiscount(event.target.value)} placeholder="BUBBLE10" />
+            <input value={discount} onChange={(event) => setDiscount(event.target.value)} placeholder="Validated securely at checkout" />
           </label>
+          {!account ? (
+            <label className="discount-field">
+              <span>Email for order confirmation</span>
+              <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
+            </label>
+          ) : null}
           <div className="shipping-estimator">
             <PackageCheck size={18} />
             <span>{shipping ? `${formatMoney(50 - subtotal)} away from free shipping` : "Free shipping unlocked"}</span>
@@ -269,8 +285,8 @@ function CartDrawer({ onClose }) {
               <dd>{formatMoney(subtotal)}</dd>
             </div>
             <div>
-              <dt>Discount</dt>
-              <dd>-{formatMoney(appliedDiscount)}</dd>
+              <dt>Discounts</dt>
+              <dd>Stripe validated</dd>
             </div>
             <div>
               <dt>Shipping</dt>
@@ -281,14 +297,23 @@ function CartDrawer({ onClose }) {
               <dd>{formatMoney(total)}</dd>
             </div>
           </dl>
-          <button className="primary-button" type="button" disabled={!cart.length}>
-            Checkout securely
+          {checkoutError ? <p className="form-error">{checkoutError}</p> : null}
+          <button
+            className="primary-button"
+            type="button"
+            disabled={!cart.length || checkoutLoading || (!account && !email)}
+            onClick={() => startCheckout({ email, discountCode: discount })}
+          >
+            {checkoutLoading ? "Opening secure checkout..." : "Checkout securely"}
           </button>
           <div className="wallet-row" aria-label="Express payment options">
             <span>Apple Pay</span>
             <span>Google Pay</span>
-            <span>Shop Pay</span>
+            <span>PayPal</span>
           </div>
+          <Link className="secondary-link" href="/cart" onClick={onClose}>
+            View full cart
+          </Link>
           {cart.length ? (
             <button className="text-button" type="button" onClick={clearCart}>
               Clear cart
@@ -347,8 +372,8 @@ function Footer() {
           </div>
         </div>
         <FooterColumn title="Shop" links={categories.map((category) => [category.name, `/shop?category=${category.name}`])} />
-        <FooterColumn title="Company" links={[["About", "/about"], ["Contact", "/contact"], ["Account", "/account"]]} />
-        <FooterColumn title="Policies" links={[["Shipping", "/shop#shipping"], ["Returns", "/shop#returns"], ["FAQ", "/contact"], ["Privacy", "/account"]]} />
+        <FooterColumn title="Company" links={[["About", "/about"], ["Contact", "/contact"], ["Account", "/account"], ["FAQ", "/faq"]]} />
+        <FooterColumn title="Policies" links={[["Shipping", "/shipping-policy"], ["Returns", "/return-refund-policy"], ["Privacy", "/privacy-policy"], ["Terms", "/terms-of-service"]]} />
         <div>
           <h3>Contact</h3>
           <p>sytnix479@gmail.com</p>

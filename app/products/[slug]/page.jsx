@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { ProductPage } from "@/components/pages";
-import { getProductBySlug, products } from "@/lib/products";
+import { getStorefrontProductBySlug } from "@/lib/catalog";
+import { products } from "@/lib/products";
+
+export const dynamic = "force-dynamic";
 
 export function generateStaticParams() {
   return products.map((product) => ({ slug: product.slug }));
@@ -8,7 +11,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const product = await getStorefrontProductBySlug(slug);
   if (!product) return {};
 
   return {
@@ -24,7 +27,7 @@ export async function generateMetadata({ params }) {
 
 export default async function Page({ params }) {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const product = await getStorefrontProductBySlug(slug);
   if (!product) notFound();
   return <ProductPage product={product} />;
 }

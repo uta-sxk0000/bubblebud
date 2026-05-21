@@ -3,7 +3,7 @@ import { CommerceProvider } from "@/components/commerce-context";
 import { SiteFrame } from "@/components/site-frame";
 
 export const metadata = {
-  metadataBase: new URL("https://bubblebud.com"),
+  metadataBase: new URL("https://bubblebud.app"),
   title: {
     default: "BubbleBud | Premium Everyday Essentials",
     template: "%s | BubbleBud",
