@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { BarChart3, Box, CheckCircle2, Heart, PackageCheck, ShieldAlert, Star, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { formatMoney, products } from "@/lib/products";
@@ -191,7 +191,6 @@ export function WishlistPage() {
 }
 
 export function OrderResultPage({ status }) {
-  const router = useRouter();
   const params = useSearchParams();
   const { account, clearCart } = useCommerce();
   const [paypalState, setPaypalState] = useState({ loading: false, message: "" });
@@ -245,11 +244,6 @@ export function OrderResultPage({ status }) {
   const success = status === "success";
   const provider = params.get("provider") || "stripe";
 
-  const navigate = (event, href) => {
-    event.preventDefault();
-    router.push(href);
-  };
-
   return (
     <section className="account-page result-page">
       {success ? <CheckCircle2 size={44} /> : <ShieldAlert size={44} />}
@@ -264,10 +258,10 @@ export function OrderResultPage({ status }) {
       {params.get("token") ? <p className="form-note">PayPal order: {params.get("token")}</p> : null}
       {paypalState.message ? <p className={paypalState.message.includes("failed") ? "form-error" : "form-note"}>{paypalState.message}</p> : null}
       <div className="hero-actions">
-        {success && account ? <Link className="primary-button" href={orderLink} onClick={(event) => navigate(event, orderLink)}>View Order</Link> : null}
-        {success && !account ? <Link className="primary-button" href="/track-order" onClick={(event) => navigate(event, "/track-order")}>Track Order</Link> : null}
-        <Link className="secondary-button" href="/shop" onClick={(event) => navigate(event, "/shop")}>Continue Shopping</Link>
-        <Link className="secondary-button" href="/" onClick={(event) => navigate(event, "/")}>Back to Home</Link>
+        {success && account ? <a className="primary-button" href={orderLink}>View Order</a> : null}
+        {success && !account ? <a className="primary-button" href="/track-order">Track Order</a> : null}
+        <a className="secondary-button" href="/shop">Continue Shopping</a>
+        <a className="secondary-button" href="/">Back to Home</a>
       </div>
     </section>
   );

@@ -258,7 +258,6 @@ export function ShopPage({ products: catalog = products }) {
   const [category, setCategory] = useState("All");
   const [sort, setSort] = useState("featured");
   const [maxPrice, setMaxPrice] = useState(60);
-  const [visible, setVisible] = useState(6);
   const [filterOpen, setFilterOpen] = useState(false);
   const [wishlistOnly, setWishlistOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -339,12 +338,7 @@ export function ShopPage({ products: catalog = products }) {
             <span>{filtered.length} products</span>
             <span>Free shipping over $50</span>
           </div>
-          {loading || !hydrated ? <SkeletonGrid /> : <ProductGrid products={filtered.slice(0, visible)} />}
-          {!loading && visible < filtered.length ? (
-            <button className="load-more-button" type="button" onClick={() => setVisible((value) => value + 4)}>
-              Load more products
-            </button>
-          ) : null}
+          {loading || !hydrated ? <SkeletonGrid /> : <ProductGrid products={filtered} />}
         </div>
       </div>
 
