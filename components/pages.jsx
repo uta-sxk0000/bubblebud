@@ -764,9 +764,6 @@ function AuthForm({ mode, account }) {
           <button className="secondary-button" type="button" disabled={!authEnabled} onClick={() => signInWithProvider("google")}>
             Continue with Google
           </button>
-          <button className="secondary-button" type="button" disabled={!authEnabled} onClick={() => signInWithProvider("apple")}>
-            Continue with Apple
-          </button>
         </div>
       ) : null}
       {message ? <p className={message.includes("sent") || message.includes("Check") || message.includes("Logged") ? "form-note" : "form-error"}>{message}</p> : null}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BarChart3, Box, CheckCircle2, Heart, PackageCheck, ShieldAlert, Star, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { formatMoney, products } from "@/lib/products";
@@ -191,13 +191,37 @@ export function WishlistPage() {
 }
 
 export function OrderResultPage({ status }) {
+  const router = useRouter();
   const params = useSearchParams();
-  const { clearCart } = useCommerce();
+  const { account, clearCart } = useCommerce();
   const [paypalState, setPaypalState] = useState({ loading: false, message: "" });
+  const [orderLink, setOrderLink] = useState("/account/orders");
 
   useEffect(() => {
     if (status === "success") clearCart();
   }, [status, clearCart]);
+
+  useEffect(() => {
+    if (status !== "success" || !account) return;
+
+    const sessionId = params.get("session_id");
+    const paypalOrderId = params.get("token");
+    const search = new URLSearchParams();
+
+    if (sessionId) search.set("session_id", sessionId);
+    if (paypalOrderId) search.set("paypal_order_id", paypalOrderId);
+    if (!search.toString()) {
+      setOrderLink("/account/orders");
+      return;
+    }
+
+    fetch(`/api/account/orders/lookup?${search.toString()}`)
+      .then((response) => (response.ok ? response.json() : { order: null }))
+      .then((data) => {
+        setOrderLink(data.order?.order_number ? `/account/orders/${encodeURIComponent(data.order.order_number)}` : "/account/orders");
+      })
+      .catch(() => setOrderLink("/account/orders"));
+  }, [account, params, status]);
 
   useEffect(() => {
     const provider = params.get("provider");
@@ -221,6 +245,11 @@ export function OrderResultPage({ status }) {
   const success = status === "success";
   const provider = params.get("provider") || "stripe";
 
+  const navigate = (event, href) => {
+    event.preventDefault();
+    router.push(href);
+  };
+
   return (
     <section className="account-page result-page">
       {success ? <CheckCircle2 size={44} /> : <ShieldAlert size={44} />}
@@ -235,8 +264,10 @@ export function OrderResultPage({ status }) {
       {params.get("token") ? <p className="form-note">PayPal order: {params.get("token")}</p> : null}
       {paypalState.message ? <p className={paypalState.message.includes("failed") ? "form-error" : "form-note"}>{paypalState.message}</p> : null}
       <div className="hero-actions">
-        <Link className="primary-button" href="/account">View account</Link>
-        <Link className="secondary-button" href="/shop">Continue shopping</Link>
+        {success && account ? <Link className="primary-button" href={orderLink} onClick={(event) => navigate(event, orderLink)}>View Order</Link> : null}
+        {success && !account ? <Link className="primary-button" href="/track-order" onClick={(event) => navigate(event, "/track-order")}>Track Order</Link> : null}
+        <Link className="secondary-button" href="/shop" onClick={(event) => navigate(event, "/shop")}>Continue Shopping</Link>
+        <Link className="secondary-button" href="/" onClick={(event) => navigate(event, "/")}>Back to Home</Link>
       </div>
     </section>
   );
