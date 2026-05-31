@@ -1980,6 +1980,44 @@ button:disabled {
   cursor: pointer;
 }
 
+.address-autocomplete {
+  display: grid;
+  gap: 6px;
+  margin-top: -4px;
+}
+
+.address-autocomplete button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.address-autocomplete button:hover {
+  border-color: color-mix(in srgb, var(--ink) 36%, var(--line));
+  background: color-mix(in srgb, var(--paper) 94%, var(--pink-soft));
+  transform: translateY(-1px);
+}
+
+.address-autocomplete strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.address-autocomplete span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .empty-state {
   display: grid;
   place-items: center;

@@ -8,6 +8,76 @@ import { formatMoney, products } from "@/lib/products";
 import { AccountPage, ProductGrid } from "@/components/pages";
 import { useCommerce } from "@/components/commerce-context";
 
+let googlePlacesPromise;
+
+function loadGooglePlaces() {
+  if (typeof window === "undefined") return Promise.resolve(null);
+
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  if (!key) return Promise.resolve(null);
+  if (window.google?.maps?.places) return Promise.resolve(window.google);
+
+  if (!googlePlacesPromise) {
+    googlePlacesPromise = new Promise((resolve, reject) => {
+      const existingScript = document.querySelector('script[data-bubblebud-google-places="true"]');
+
+      if (existingScript) {
+        existingScript.addEventListener("load", () => resolve(window.google), { once: true });
+        existingScript.addEventListener("error", reject, { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.dataset.bubblebudGooglePlaces = "true";
+      script.addEventListener("load", () => resolve(window.google), { once: true });
+      script.addEventListener("error", reject, { once: true });
+      document.head.appendChild(script);
+    });
+  }
+
+  return googlePlacesPromise;
+}
+
+function normalizeAddress(address = {}) {
+  return {
+    line1: address.line1 || address.line_1 || "",
+    line2: address.line2 || address.line_2 || "",
+    city: address.city || "",
+    state: address.state || "",
+    postalCode: address.postalCode || address.postal_code || "",
+    country: address.country || "US",
+  };
+}
+
+function parseGoogleAddress(place) {
+  const componentMap = {};
+
+  (place.address_components || []).forEach((component) => {
+    component.types.forEach((type) => {
+      componentMap[type] = component;
+    });
+  });
+
+  const street = [componentMap.street_number?.long_name, componentMap.route?.long_name].filter(Boolean).join(" ");
+
+  return {
+    line1: street || place.name || place.formatted_address || "",
+    line2: "",
+    city:
+      componentMap.locality?.long_name ||
+      componentMap.sublocality?.long_name ||
+      componentMap.sublocality_level_1?.long_name ||
+      componentMap.postal_town?.long_name ||
+      "",
+    state: componentMap.administrative_area_level_1?.short_name || "",
+    postalCode: componentMap.postal_code?.long_name || "",
+    country: componentMap.country?.short_name || "US",
+  };
+}
+
 export function CartPage() {
   const { account, cart, checkoutError, checkoutLoading, removeFromCart, startCheckout, subtotal, updateCartQuantity } = useCommerce();
   const [provider, setProvider] = useState("stripe");
@@ -40,14 +110,7 @@ export function CartPage() {
   const updateShipping = (field, value) => setShippingAddress((current) => ({ ...current, [field]: value }));
   const updateBilling = (field, value) => setBillingAddress((current) => ({ ...current, [field]: value }));
   const applyAddress = (address) => {
-    setShippingAddress({
-      line1: address.line1 || address.line_1 || "",
-      line2: address.line2 || address.line_2 || "",
-      city: address.city || "",
-      state: address.state || "",
-      postalCode: address.postalCode || address.postal_code || "",
-      country: address.country || "US",
-    });
+    setShippingAddress(normalizeAddress(address));
   };
 
   const submitCheckout = (event) => {
@@ -170,13 +233,91 @@ export function CartPage() {
 }
 
 function AddressFields({ address, applyAddress, listId, savedAddresses = [], title, update }) {
+  const [placesReady, setPlacesReady] = useState(false);
+  const [predictions, setPredictions] = useState([]);
+  const [autocompleteService, setAutocompleteService] = useState(null);
+  const [placesService, setPlacesService] = useState(null);
+  const [sessionToken, setSessionToken] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    loadGooglePlaces()
+      .then((google) => {
+        if (!mounted || !google?.maps?.places) return;
+
+        setPlacesReady(true);
+        setAutocompleteService(new google.maps.places.AutocompleteService());
+        setPlacesService(new google.maps.places.PlacesService(document.createElement("div")));
+        setSessionToken(new google.maps.places.AutocompleteSessionToken());
+      })
+      .catch(() => {
+        if (mounted) setPlacesReady(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const input = address.line1.trim();
+
+    if (!autocompleteService || !sessionToken || input.length < 3) {
+      setPredictions([]);
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      autocompleteService.getPlacePredictions({ input, types: ["address"], sessionToken }, (results, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && results?.length) {
+          setPredictions(results.slice(0, 6));
+          return;
+        }
+
+        setPredictions([]);
+      });
+    }, 220);
+
+    return () => window.clearTimeout(timeout);
+  }, [address.line1, autocompleteService, sessionToken]);
+
+  const fillAddress = (nextAddress) => {
+    if (applyAddress) {
+      applyAddress(nextAddress);
+      return;
+    }
+
+    const normalized = normalizeAddress(nextAddress);
+    Object.entries(normalized).forEach(([field, value]) => update(field, value));
+  };
+
+  const selectPrediction = (prediction) => {
+    if (!placesService || !sessionToken) return;
+
+    placesService.getDetails(
+      {
+        placeId: prediction.place_id,
+        fields: ["address_components", "formatted_address", "name"],
+        sessionToken,
+      },
+      (place, status) => {
+        if (status !== window.google.maps.places.PlacesServiceStatus.OK || !place) return;
+
+        fillAddress(parseGoogleAddress(place));
+        setPredictions([]);
+        setSessionToken(new window.google.maps.places.AutocompleteSessionToken());
+      }
+    );
+  };
+
   return (
     <div className="checkout-section">
       <h3>{title}</h3>
       {savedAddresses.length ? (
         <div className="address-suggestions">
           {savedAddresses.map((saved) => (
-            <button type="button" key={saved.id} onClick={() => applyAddress?.(saved)}>
+            <button type="button" key={saved.id} onClick={() => fillAddress(saved)}>
               {saved.label}: {saved.line1 || saved.line_1}, {saved.city}, {saved.state}
             </button>
           ))}
@@ -189,6 +330,16 @@ function AddressFields({ address, applyAddress, listId, savedAddresses = [], tit
           {savedAddresses.map((saved) => <option key={saved.id} value={saved.line1 || saved.line_1 || ""} />)}
         </datalist>
       </label>
+      {placesReady && predictions.length ? (
+        <div className="address-autocomplete" role="listbox" aria-label={`${title} address suggestions`}>
+          {predictions.map((prediction) => (
+            <button type="button" key={prediction.place_id} onClick={() => selectPrediction(prediction)}>
+              <strong>{prediction.structured_formatting?.main_text || prediction.description}</strong>
+              <span>{prediction.structured_formatting?.secondary_text || prediction.description}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <label className="discount-field">
         <span>Apartment, suite, etc.</span>
         <input autoComplete="address-line2" value={address.line2} onChange={(event) => update("line2", event.target.value)} placeholder="Optional" />
