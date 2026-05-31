@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -203,8 +204,8 @@ function SocialGallery() {
     <section className="section-wrap">
       <SectionHeading eyebrow="Social proof" title="Seen in real routines" copy="Lifestyle content with subtle motion and high-quality product focus." />
       <div className="social-grid">
-        {images.map((image) => (
-          <a className="social-tile" href="https://www.instagram.com/" key={image} aria-label="Open BubbleBud social media">
+        {images.map((image, index) => (
+          <a className="social-tile" href={index === 0 ? "https://www.tiktok.com/@_bubblebud_" : "https://www.instagram.com/_bubblebud/"} target="_blank" rel="noreferrer" key={image} aria-label="Open BubbleBud social media">
             <img src={image} alt="" loading="lazy" />
             <span>Follow</span>
           </a>
@@ -253,6 +254,7 @@ function NewsletterSection() {
 }
 
 export function ShopPage({ products: catalog = products }) {
+  const searchParams = useSearchParams();
   const { hydrated, wishlist } = useCommerce();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -263,17 +265,15 @@ export function ShopPage({ products: catalog = products }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const initialCategory = params.get("category");
-    const initialSort = params.get("sort");
-    const initialTag = params.get("tag");
-    if (initialCategory) setCategory(initialCategory);
-    if (initialSort === "rating") setSort("rating");
-    if (initialSort === "new" || initialTag === "new") setSort("newest");
-    if (params.get("wishlist")) setWishlistOnly(true);
+    const initialCategory = searchParams.get("category");
+    const initialSort = searchParams.get("sort");
+    const initialTag = searchParams.get("tag");
+    setCategory(initialCategory || "All");
+    setSort(initialSort === "rating" ? "rating" : initialSort === "new" || initialTag === "new" ? "newest" : "featured");
+    setWishlistOnly(Boolean(searchParams.get("wishlist")));
     const timer = window.setTimeout(() => setLoading(false), 400);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [searchParams]);
 
   const filtered = useMemo(() => {
     const searched = catalog.filter((product) => {
@@ -363,7 +363,7 @@ export function ShopPage({ products: catalog = products }) {
 
 function FilterPanel({ category, maxPrice, query, setCategory, setMaxPrice, setQuery, setWishlistOnly, wishlistOnly }) {
   return (
-    <div className="filter-panel">
+    <div className="filter-panel" id="categories">
       <label className="search-filter">
         <Search size={18} />
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products" />

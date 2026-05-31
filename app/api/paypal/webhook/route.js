@@ -9,6 +9,8 @@ function captureDetails(resource) {
     captureId: capture?.id,
     paypalOrderId: capture?.supplementary_data?.related_ids?.order_id || resource?.id || purchaseUnit?.payments?.captures?.[0]?.supplementary_data?.related_ids?.order_id,
     checkoutIntentId: capture?.custom_id || purchaseUnit?.custom_id,
+    payer: resource?.payer,
+    shipping: purchaseUnit?.shipping,
   };
 }
 
@@ -41,8 +43,19 @@ export async function POST(request) {
     }
 
     if (event.event_type === "PAYMENT.CAPTURE.COMPLETED" || event.event_type === "CHECKOUT.ORDER.COMPLETED") {
-      const { captureId, paypalOrderId, checkoutIntentId } = captureDetails(event.resource);
+      const { captureId, checkoutIntentId, payer, paypalOrderId, shipping } = captureDetails(event.resource);
       if (captureId && checkoutIntentId) {
+        const payerName = [payer?.name?.given_name, payer?.name?.surname].filter(Boolean).join(" ");
+        await supabase
+          .from("checkout_intents")
+          .update({
+            customer_email: payer?.email_address || undefined,
+            customer_name: payerName || shipping?.name?.full_name || "BubbleBud customer",
+            ...(shipping ? { shipping_address: shipping } : {}),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", checkoutIntentId);
+
         await finalizeCheckoutIntent({
           supabase,
           checkoutIntentId,

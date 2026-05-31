@@ -26,7 +26,7 @@ import { useCommerce } from "@/components/commerce-context";
 const navItems = [
   ["Home", "/"],
   ["Shop", "/shop"],
-  ["Categories", "/shop#categories"],
+  ["Categories", "/shop?category=All#categories"],
   ["Best Sellers", "/shop?sort=rating"],
   ["New Arrivals", "/shop?tag=new"],
   ["About", "/about"],
@@ -289,11 +289,6 @@ function CartDrawer({ onClose }) {
           <Link className={`primary-button ${!cart.length ? "is-disabled" : ""}`} href="/cart" onClick={onClose}>
             Checkout securely
           </Link>
-          <div className="wallet-row" aria-label="Express payment options">
-            <span>Apple Pay</span>
-            <span>Google Pay</span>
-            <span>PayPal</span>
-          </div>
           <Link className="secondary-link" href="/cart" onClick={onClose}>
             View full cart
           </Link>
@@ -349,8 +344,8 @@ function Footer() {
           </Link>
           <p>Premium everyday essentials, giftable finds, and clean shopping experiences for modern customers.</p>
           <div className="social-row">
-            <span>Instagram</span>
-            <span>TikTok</span>
+            <a href="https://www.instagram.com/_bubblebud/" target="_blank" rel="noreferrer">Instagram</a>
+            <a href="https://www.tiktok.com/@_bubblebud_" target="_blank" rel="noreferrer">TikTok</a>
             <span>Pinterest</span>
           </div>
         </div>

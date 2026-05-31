@@ -24,10 +24,21 @@ export async function POST(request) {
       const checkoutIntentId = session.metadata?.checkout_intent_id;
 
       if (checkoutIntentId) {
+        const customerDetails = session.customer_details || {};
+        const shippingDetails = session.shipping_details || null;
+        const billingAddress = customerDetails.address
+          ? { name: customerDetails.name || "", address: customerDetails.address }
+          : null;
+
         await supabase
           .from("checkout_intents")
           .update({
             provider_session_id: session.id,
+            customer_email: customerDetails.email || session.customer_email,
+            customer_name: customerDetails.name || shippingDetails?.name || "BubbleBud customer",
+            customer_phone: customerDetails.phone || null,
+            ...(shippingDetails ? { shipping_address: shippingDetails } : {}),
+            ...(billingAddress ? { billing_address: billingAddress } : {}),
             updated_at: new Date().toISOString(),
           })
           .eq("id", checkoutIntentId);

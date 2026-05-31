@@ -5,6 +5,7 @@ import { createStripe } from "@/lib/stripe";
 import { calculateShipping } from "@/lib/commerce";
 import { getSiteUrl } from "@/lib/env";
 import { createPayPalOrder } from "@/lib/paypal";
+import { products as seedProducts } from "@/lib/products";
 import { rateLimit } from "@/lib/rate-limit";
 
 function absoluteImageUrl(image) {
@@ -14,6 +15,30 @@ function absoluteImageUrl(image) {
   } catch {
     return undefined;
   }
+}
+
+function seedProductRow(product) {
+  return {
+    id: product.id,
+    slug: product.slug,
+    title: product.title,
+    description: product.description,
+    category: product.category,
+    price_cents: Math.round(product.price * 100),
+    compare_at_cents: product.compareAt ? Math.round(product.compareAt * 100) : null,
+    sku: `BB-${product.id.toUpperCase()}`,
+    inventory_quantity: product.badge === "Low Stock" ? 4 : 25,
+    stock_status: product.badge === "Low Stock" ? "low_stock" : "in_stock",
+    images: product.gallery,
+    variants: product.variants.map((variant, index) => ({ name: variant, color: product.colors[index] || product.colors[0] || variant })),
+    tags: product.tags,
+    featured: ["New", "New Arrival", "Trending"].includes(product.badge),
+    best_seller: product.badge === "Best Seller",
+    active: true,
+    details: product.details,
+    care: product.care,
+    shipping: product.shipping,
+  };
 }
 
 export async function POST(request) {
@@ -31,7 +56,10 @@ export async function POST(request) {
   }
 
   const user = await getCurrentUser();
-  const customerEmail = user?.email || payload.customer.email;
+  const isAccountCheckout = payload.checkoutMode === "account";
+  const customerEmail = isAccountCheckout ? user?.email || payload.customer?.email : "";
+  const checkoutEmail = customerEmail || `checkout-${crypto.randomUUID()}@bubblebud.app`;
+  const emptyAddress = { line1: "", line2: "", city: "", state: "", postalCode: "", country: "US" };
   const supabase = createAdminSupabase();
 
   const productIds = [...new Set(payload.items.map((item) => item.productId))];
@@ -43,7 +71,21 @@ export async function POST(request) {
 
   if (productError) return jsonError(productError.message, 500);
 
-  const productMap = new Map((products || []).map((product) => [product.id, product]));
+  const availableProducts = products || [];
+  const foundIds = new Set(availableProducts.map((product) => product.id));
+  const missingSeedRows = productIds
+    .filter((id) => !foundIds.has(id))
+    .map((id) => seedProducts.find((product) => product.id === id))
+    .filter(Boolean)
+    .map(seedProductRow);
+
+  if (missingSeedRows.length) {
+    const { error: seedError } = await supabase.from("products").upsert(missingSeedRows, { onConflict: "id" });
+    if (seedError) return jsonError(seedError.message, 500);
+    availableProducts.push(...missingSeedRows);
+  }
+
+  const productMap = new Map(availableProducts.map((product) => [product.id, product]));
   const intentItems = [];
   const stripeLineItems = [];
 
@@ -93,13 +135,13 @@ export async function POST(request) {
   const { data: checkoutIntent, error: intentError } = await supabase
     .from("checkout_intents")
     .insert({
-      user_id: user?.id || null,
+      user_id: isAccountCheckout ? user?.id || null : null,
       provider: payload.provider,
-      customer_email: customerEmail,
-      customer_name: payload.customer.name,
-      customer_phone: payload.customer.phone,
-      shipping_address: payload.shippingAddress,
-      billing_address: payload.billingAddress,
+      customer_email: checkoutEmail,
+      customer_name: payload.customer?.name || "Guest checkout",
+      customer_phone: payload.customer?.phone || null,
+      shipping_address: payload.shippingAddress || emptyAddress,
+      billing_address: payload.billingAddress || payload.shippingAddress || emptyAddress,
       items: intentItems,
       subtotal_cents: subtotalCents,
       discount_cents: discountCents,
@@ -147,17 +189,16 @@ export async function POST(request) {
   const stripe = createStripe();
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    customer_email: customerEmail,
+    ...(customerEmail ? { customer_email: customerEmail } : {}),
     line_items: stripeLineItems,
     allow_promotion_codes: true,
     billing_address_collection: "required",
-    phone_number_collection: { enabled: true },
     shipping_address_collection: {
       allowed_countries: ["US"],
     },
     metadata: {
       checkout_intent_id: checkoutIntent.id,
-      user_id: user?.id || "",
+      user_id: isAccountCheckout ? user?.id || "" : "",
       guest_email: user ? "" : customerEmail,
     },
     success_url: `${getSiteUrl()}/order-success?provider=stripe&session_id={CHECKOUT_SESSION_ID}`,

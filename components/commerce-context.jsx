@@ -190,7 +190,7 @@ export function CommerceProvider({ children }) {
     setUser(null);
   };
 
-  const startCheckout = async ({ provider = "stripe", customer, shippingAddress, billingAddress, discountCode } = {}) => {
+  const startCheckout = async ({ provider = "stripe", checkoutMode = "guest", customer, shippingAddress, billingAddress, discountCode } = {}) => {
     setCheckoutError("");
     setCheckoutLoading(true);
     try {
@@ -199,9 +199,10 @@ export function CommerceProvider({ children }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider,
+          checkoutMode,
           customer: {
             ...customer,
-            email: user?.email || customer?.email,
+            email: checkoutMode === "account" ? user?.email || customer?.email : customer?.email,
           },
           shippingAddress,
           billingAddress,

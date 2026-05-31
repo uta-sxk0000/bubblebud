@@ -11,13 +11,16 @@ import { useCommerce } from "@/components/commerce-context";
 export function CartPage() {
   const { account, cart, checkoutError, checkoutLoading, removeFromCart, startCheckout, subtotal, updateCartQuantity } = useCommerce();
   const [provider, setProvider] = useState("stripe");
+  const [checkoutMode, setCheckoutMode] = useState("guest");
   const [customer, setCustomer] = useState({ name: account?.name || "", email: account?.email || "", phone: "" });
   const [shippingAddress, setShippingAddress] = useState({ line1: "", line2: "", city: "", state: "", postalCode: "", country: "US" });
   const [billingAddress, setBillingAddress] = useState({ line1: "", line2: "", city: "", state: "", postalCode: "", country: "US" });
+  const [savedAddresses, setSavedAddresses] = useState([]);
   const [sameBilling, setSameBilling] = useState(true);
   const [discountCode, setDiscountCode] = useState("");
   const shipping = subtotal > 50 || subtotal === 0 ? 0 : 5.95;
   const effectiveCustomer = { ...customer, email: account?.email || customer.email };
+  const isAccountCheckout = checkoutMode === "account";
 
   useEffect(() => {
     if (account?.email) {
@@ -25,17 +28,36 @@ export function CartPage() {
     }
   }, [account]);
 
+  useEffect(() => {
+    if (!account) return;
+    fetch("/api/account/addresses")
+      .then((response) => (response.ok ? response.json() : { addresses: [] }))
+      .then((data) => setSavedAddresses(data.addresses || []))
+      .catch(() => setSavedAddresses([]));
+  }, [account]);
+
   const updateCustomer = (field, value) => setCustomer((current) => ({ ...current, [field]: value }));
   const updateShipping = (field, value) => setShippingAddress((current) => ({ ...current, [field]: value }));
   const updateBilling = (field, value) => setBillingAddress((current) => ({ ...current, [field]: value }));
+  const applyAddress = (address) => {
+    setShippingAddress({
+      line1: address.line1 || address.line_1 || "",
+      line2: address.line2 || address.line_2 || "",
+      city: address.city || "",
+      state: address.state || "",
+      postalCode: address.postalCode || address.postal_code || "",
+      country: address.country || "US",
+    });
+  };
 
   const submitCheckout = (event) => {
     event.preventDefault();
     startCheckout({
       provider,
-      customer: effectiveCustomer,
-      shippingAddress,
-      billingAddress: sameBilling ? shippingAddress : billingAddress,
+      checkoutMode,
+      customer: isAccountCheckout ? effectiveCustomer : undefined,
+      shippingAddress: isAccountCheckout ? shippingAddress : undefined,
+      billingAddress: isAccountCheckout ? sameBilling ? shippingAddress : billingAddress : undefined,
       discountCode,
     });
   };
@@ -78,6 +100,14 @@ export function CartPage() {
         </div>
         <form className="checkout-card" onSubmit={submitCheckout}>
           <h2>Secure checkout</h2>
+          <div className="payment-toggle" role="radiogroup" aria-label="Checkout type">
+            <button className={checkoutMode === "guest" ? "is-active" : ""} type="button" onClick={() => setCheckoutMode("guest")}>
+              Guest checkout
+            </button>
+            <button className={checkoutMode === "account" ? "is-active" : ""} type="button" onClick={() => setCheckoutMode("account")}>
+              Create / use account
+            </button>
+          </div>
           <div className="payment-toggle" role="radiogroup" aria-label="Payment provider">
             <button className={provider === "stripe" ? "is-active" : ""} type="button" onClick={() => setProvider("stripe")}>
               Card / Wallet
@@ -86,28 +116,39 @@ export function CartPage() {
               PayPal
             </button>
           </div>
-          <div className="checkout-section">
-            <h3>Customer</h3>
-            <label className="discount-field">
-              <span>Full name</span>
-              <input required value={customer.name} onChange={(event) => updateCustomer("name", event.target.value)} placeholder="Your name" />
-            </label>
-            <label className="discount-field">
-              <span>Email</span>
-              <input required type="email" value={effectiveCustomer.email} disabled={Boolean(account)} onChange={(event) => updateCustomer("email", event.target.value)} placeholder="you@example.com" />
-            </label>
-            <label className="discount-field">
-              <span>Phone</span>
-              <input required type="tel" value={customer.phone} onChange={(event) => updateCustomer("phone", event.target.value)} placeholder="(555) 123-4567" />
-            </label>
-            {account ? <p className="form-note">Checking out with your BubbleBud account.</p> : <p className="form-note">Guest checkout creates an order tied to this email.</p>}
-          </div>
-          <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} />
-          <label className="check-row">
-            <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
-            <span>Billing address is the same as shipping</span>
-          </label>
-          {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} /> : null}
+          {checkoutMode === "guest" ? (
+            <div className="checkout-section">
+              <h3>Guest checkout</h3>
+              <p className="form-note">Continue directly to secure checkout. Stripe or PayPal will collect the email and shipping details needed for your order.</p>
+            </div>
+          ) : (
+            <>
+              <div className="checkout-section">
+                <h3>Customer</h3>
+                {!account ? <p className="form-note">For a permanent account, create one first. You can still save these details for checkout.</p> : null}
+                {!account ? <Link className="secondary-button" href="/register">Create account</Link> : null}
+                <label className="discount-field">
+                  <span>Full name</span>
+                  <input required={isAccountCheckout} autoComplete="name" value={customer.name} onChange={(event) => updateCustomer("name", event.target.value)} placeholder="Your name" />
+                </label>
+                <label className="discount-field">
+                  <span>Email</span>
+                  <input required={isAccountCheckout} type="email" autoComplete="email" value={effectiveCustomer.email} disabled={Boolean(account)} onChange={(event) => updateCustomer("email", event.target.value)} placeholder="you@example.com" />
+                </label>
+                <label className="discount-field">
+                  <span>Phone optional</span>
+                  <input type="tel" autoComplete="tel" value={customer.phone} onChange={(event) => updateCustomer("phone", event.target.value)} placeholder="(555) 123-4567" />
+                </label>
+                {account ? <p className="form-note">Checking out with your BubbleBud account.</p> : null}
+              </div>
+              <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} savedAddresses={savedAddresses} applyAddress={applyAddress} listId="shipping-addresses" />
+              <label className="check-row">
+                <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
+                <span>Billing address is the same as shipping</span>
+              </label>
+              {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} savedAddresses={savedAddresses} applyAddress={null} listId="billing-addresses" /> : null}
+            </>
+          )}
           <label className="discount-field">
             <span>Discount code</span>
             <input value={discountCode} onChange={(event) => setDiscountCode(event.target.value)} placeholder="Optional" />
@@ -122,48 +163,54 @@ export function CartPage() {
           <button className="primary-button" type="submit" disabled={!cart.length || checkoutLoading}>
             {checkoutLoading ? "Opening secure payment..." : provider === "paypal" ? "Pay with PayPal" : "Pay by card or wallet"}
           </button>
-          <div className="wallet-row">
-            <span>Cards</span>
-            <span>Apple Pay</span>
-            <span>Google Pay</span>
-            <span>PayPal</span>
-          </div>
         </form>
       </div>
     </section>
   );
 }
 
-function AddressFields({ address, title, update }) {
+function AddressFields({ address, applyAddress, listId, savedAddresses = [], title, update }) {
   return (
     <div className="checkout-section">
       <h3>{title}</h3>
+      {savedAddresses.length ? (
+        <div className="address-suggestions">
+          {savedAddresses.map((saved) => (
+            <button type="button" key={saved.id} onClick={() => applyAddress?.(saved)}>
+              {saved.label}: {saved.line1 || saved.line_1}, {saved.city}, {saved.state}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <label className="discount-field">
         <span>Address</span>
-        <input required value={address.line1} onChange={(event) => update("line1", event.target.value)} placeholder="Street address" />
+        <input required autoComplete="street-address" list={listId} value={address.line1} onChange={(event) => update("line1", event.target.value)} placeholder="Street address" />
+        <datalist id={listId}>
+          {savedAddresses.map((saved) => <option key={saved.id} value={saved.line1 || saved.line_1 || ""} />)}
+        </datalist>
       </label>
       <label className="discount-field">
         <span>Apartment, suite, etc.</span>
-        <input value={address.line2} onChange={(event) => update("line2", event.target.value)} placeholder="Optional" />
+        <input autoComplete="address-line2" value={address.line2} onChange={(event) => update("line2", event.target.value)} placeholder="Optional" />
       </label>
       <div className="form-grid compact-grid">
         <label className="discount-field">
           <span>City</span>
-          <input required value={address.city} onChange={(event) => update("city", event.target.value)} placeholder="City" />
+          <input required autoComplete="address-level2" value={address.city} onChange={(event) => update("city", event.target.value)} placeholder="City" />
         </label>
         <label className="discount-field">
           <span>State</span>
-          <input required value={address.state} onChange={(event) => update("state", event.target.value)} placeholder="State" />
+          <input required autoComplete="address-level1" value={address.state} onChange={(event) => update("state", event.target.value)} placeholder="State" />
         </label>
       </div>
       <div className="form-grid compact-grid">
         <label className="discount-field">
           <span>ZIP code</span>
-          <input required value={address.postalCode} onChange={(event) => update("postalCode", event.target.value)} placeholder="ZIP" />
+          <input required autoComplete="postal-code" value={address.postalCode} onChange={(event) => update("postalCode", event.target.value)} placeholder="ZIP" />
         </label>
         <label className="discount-field">
           <span>Country</span>
-          <input required maxLength={2} value={address.country} onChange={(event) => update("country", event.target.value.toUpperCase())} />
+          <input required autoComplete="country" maxLength={2} value={address.country} onChange={(event) => update("country", event.target.value.toUpperCase())} />
         </label>
       </div>
     </div>
