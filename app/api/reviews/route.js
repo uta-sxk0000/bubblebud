@@ -15,6 +15,7 @@ export async function GET(request) {
     .select("id,product_id,rating,title,body,verified_purchase,created_at,profiles(full_name,email)")
     .eq("product_id", productId)
     .eq("visible", true)
+    .eq("status", "approved")
     .order("created_at", { ascending: false });
 
   if (error) return jsonError(error.message, 500);
@@ -52,9 +53,10 @@ export async function POST(request) {
   const supabase = createAdminSupabase();
   const orderQuery = supabase
     .from("orders")
-    .select("id,status,order_items!inner(product_id)")
+    .select("id,status,payment_status,order_items!inner(product_id)")
     .eq("user_id", user.id)
     .eq("status", "delivered")
+    .eq("payment_status", "paid")
     .eq("order_items.product_id", payload.productId);
 
   const { data: orders, error: orderError } = payload.orderId
@@ -66,6 +68,16 @@ export async function POST(request) {
     return jsonError("Reviews are available after a delivered verified purchase.", 403);
   }
 
+  const { data: existingReview, error: existingError } = await supabase
+    .from("reviews")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("product_id", payload.productId)
+    .maybeSingle();
+
+  if (existingError) return jsonError(existingError.message, 500);
+  if (existingReview) return jsonError("You have already reviewed this product.", 409);
+
   const reviewPayload = {
     user_id: user.id,
     product_id: payload.productId,
@@ -75,11 +87,12 @@ export async function POST(request) {
     body: payload.body,
     verified_purchase: true,
     visible: true,
+    status: "approved",
   };
 
   const { data, error } = await supabase
     .from("reviews")
-    .upsert(reviewPayload, { onConflict: "user_id,product_id" })
+    .insert(reviewPayload)
     .select("*")
     .single();
 

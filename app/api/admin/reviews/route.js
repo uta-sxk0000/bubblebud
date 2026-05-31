@@ -25,7 +25,25 @@ export async function PATCH(request) {
     const supabase = createAdminSupabase();
     const { data, error } = await supabase
       .from("reviews")
-      .update({ visible: payload.visible, updated_at: new Date().toISOString() })
+      .update({ visible: payload.visible, status: payload.visible ? "approved" : "hidden", updated_at: new Date().toISOString() })
+      .eq("id", payload.reviewId)
+      .select("*")
+      .single();
+    if (error) return jsonError(error.message, 500);
+    return Response.json({ review: data });
+  } catch (error) {
+    return jsonError(error.message, error.status || 422);
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    await requireAdmin();
+    const payload = z.object({ reviewId: z.string().uuid() }).parse(await request.json());
+    const supabase = createAdminSupabase();
+    const { data, error } = await supabase
+      .from("reviews")
+      .update({ visible: false, status: "deleted", updated_at: new Date().toISOString() })
       .eq("id", payload.reviewId)
       .select("*")
       .single();

@@ -2,9 +2,19 @@ import { checkoutSchema, jsonError } from "@/lib/validation";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { createStripe } from "@/lib/stripe";
-import { calculateShipping, generateOrderNumber } from "@/lib/commerce";
+import { calculateShipping } from "@/lib/commerce";
 import { getSiteUrl } from "@/lib/env";
+import { createPayPalOrder } from "@/lib/paypal";
 import { rateLimit } from "@/lib/rate-limit";
+
+function absoluteImageUrl(image) {
+  if (!image) return undefined;
+  try {
+    return [new URL(image, getSiteUrl()).toString()];
+  } catch {
+    return undefined;
+  }
+}
 
 export async function POST(request) {
   try {
@@ -21,13 +31,8 @@ export async function POST(request) {
   }
 
   const user = await getCurrentUser();
-  const customerEmail = user?.email || payload.customerEmail;
-  if (!customerEmail) {
-    return jsonError("Email is required for guest checkout.", 422);
-  }
-
+  const customerEmail = user?.email || payload.customer.email;
   const supabase = createAdminSupabase();
-  const stripe = createStripe();
 
   const productIds = [...new Set(payload.items.map((item) => item.productId))];
   const { data: products, error: productError } = await supabase
@@ -39,7 +44,7 @@ export async function POST(request) {
   if (productError) return jsonError(productError.message, 500);
 
   const productMap = new Map((products || []).map((product) => [product.id, product]));
-  const orderItems = [];
+  const intentItems = [];
   const stripeLineItems = [];
 
   for (const item of payload.items) {
@@ -50,15 +55,18 @@ export async function POST(request) {
     }
 
     const unitAmount = product.sale_price_cents || product.price_cents;
-    orderItems.push({
+    const totalCents = unitAmount * item.quantity;
+
+    intentItems.push({
       product_id: product.id,
       product_title: product.title,
       sku: product.sku,
       variant: item.variant || "Default",
       quantity: item.quantity,
       unit_price_cents: unitAmount,
-      total_cents: unitAmount * item.quantity,
+      total_cents: totalCents,
     });
+
     stripeLineItems.push({
       quantity: item.quantity,
       price_data: {
@@ -66,44 +74,44 @@ export async function POST(request) {
         unit_amount: unitAmount,
         product_data: {
           name: product.title,
-          images: product.images?.[0] ? [new URL(product.images[0], getSiteUrl()).toString()] : undefined,
+          images: absoluteImageUrl(product.images?.[0]),
           metadata: {
             product_id: product.id,
-            sku: product.sku,
+            sku: product.sku || "",
           },
         },
       },
     });
   }
 
-  const subtotalCents = orderItems.reduce((sum, item) => sum + item.total_cents, 0);
+  const subtotalCents = intentItems.reduce((sum, item) => sum + item.total_cents, 0);
   const shippingCents = calculateShipping(subtotalCents);
-  const totalCents = subtotalCents + shippingCents;
+  const discountCents = 0;
+  const taxCents = 0;
+  const totalCents = subtotalCents - discountCents + taxCents + shippingCents;
 
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
+  const { data: checkoutIntent, error: intentError } = await supabase
+    .from("checkout_intents")
     .insert({
-      order_number: generateOrderNumber(),
       user_id: user?.id || null,
+      provider: payload.provider,
       customer_email: customerEmail,
-      status: "pending",
-      payment_status: "pending",
+      customer_name: payload.customer.name,
+      customer_phone: payload.customer.phone,
+      shipping_address: payload.shippingAddress,
+      billing_address: payload.billingAddress,
+      items: intentItems,
       subtotal_cents: subtotalCents,
+      discount_cents: discountCents,
+      tax_cents: taxCents,
       shipping_cents: shippingCents,
       total_cents: totalCents,
       currency: "usd",
-      shipping_method: shippingCents === 0 ? "Free standard shipping" : "Standard shipping",
     })
     .select("*")
     .single();
 
-  if (orderError) return jsonError(orderError.message, 500);
-
-  const { error: itemsError } = await supabase
-    .from("order_items")
-    .insert(orderItems.map((item) => ({ ...item, order_id: order.id })));
-
-  if (itemsError) return jsonError(itemsError.message, 500);
+  if (intentError) return jsonError(intentError.message, 500);
 
   if (shippingCents > 0) {
     stripeLineItems.push({
@@ -116,25 +124,50 @@ export async function POST(request) {
     });
   }
 
+  if (payload.provider === "paypal") {
+    const paypalOrder = await createPayPalOrder({
+      checkoutIntentId: checkoutIntent.id,
+      items: intentItems,
+      subtotalCents,
+      shippingCents,
+      totalCents,
+      currency: "usd",
+    });
+    const approveUrl = paypalOrder.links?.find((link) => link.rel === "approve")?.href;
+    if (!approveUrl) return jsonError("PayPal did not return an approval URL.", 502);
+
+    await supabase
+      .from("checkout_intents")
+      .update({ provider_order_id: paypalOrder.id, updated_at: new Date().toISOString() })
+      .eq("id", checkoutIntent.id);
+
+    return Response.json({ provider: "paypal", url: approveUrl, checkoutIntentId: checkoutIntent.id });
+  }
+
+  const stripe = createStripe();
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer_email: customerEmail,
     line_items: stripeLineItems,
     allow_promotion_codes: true,
     billing_address_collection: "required",
+    phone_number_collection: { enabled: true },
     shipping_address_collection: {
       allowed_countries: ["US"],
     },
     metadata: {
-      order_id: order.id,
-      order_number: order.order_number,
+      checkout_intent_id: checkoutIntent.id,
       user_id: user?.id || "",
+      guest_email: user ? "" : customerEmail,
     },
-    success_url: `${getSiteUrl()}/order-success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${getSiteUrl()}/order-failed?order=${order.order_number}`,
+    success_url: `${getSiteUrl()}/order-success?provider=stripe&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${getSiteUrl()}/order-failed?provider=stripe&checkout=${checkoutIntent.id}`,
   });
 
-  await supabase.from("orders").update({ stripe_session_id: session.id }).eq("id", order.id);
+  await supabase
+    .from("checkout_intents")
+    .update({ provider_session_id: session.id, updated_at: new Date().toISOString() })
+    .eq("id", checkoutIntent.id);
 
-  return Response.json({ url: session.url, orderNumber: order.order_number });
+  return Response.json({ provider: "stripe", url: session.url, checkoutIntentId: checkoutIntent.id });
 }

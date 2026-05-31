@@ -198,18 +198,13 @@ function SearchDialog({ onClose }) {
 
 function CartDrawer({ onClose }) {
   const {
-    account,
     cart,
-    checkoutError,
-    checkoutLoading,
     clearCart,
     removeFromCart,
-    startCheckout,
     subtotal,
     updateCartQuantity,
   } = useCommerce();
   const [discount, setDiscount] = useState("");
-  const [email, setEmail] = useState("");
   const shipping = subtotal > 50 || subtotal === 0 ? 0 : 5.95;
   const total = Math.max(0, subtotal + shipping);
 
@@ -267,14 +262,8 @@ function CartDrawer({ onClose }) {
         <div className="cart-summary">
           <label className="discount-field">
             <span>Discount code</span>
-            <input value={discount} onChange={(event) => setDiscount(event.target.value)} placeholder="Validated securely at checkout" />
+            <input value={discount} onChange={(event) => setDiscount(event.target.value)} placeholder="Enter on checkout page" />
           </label>
-          {!account ? (
-            <label className="discount-field">
-              <span>Email for order confirmation</span>
-              <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
-            </label>
-          ) : null}
           <div className="shipping-estimator">
             <PackageCheck size={18} />
             <span>{shipping ? `${formatMoney(50 - subtotal)} away from free shipping` : "Free shipping unlocked"}</span>
@@ -297,15 +286,9 @@ function CartDrawer({ onClose }) {
               <dd>{formatMoney(total)}</dd>
             </div>
           </dl>
-          {checkoutError ? <p className="form-error">{checkoutError}</p> : null}
-          <button
-            className="primary-button"
-            type="button"
-            disabled={!cart.length || checkoutLoading || (!account && !email)}
-            onClick={() => startCheckout({ email, discountCode: discount })}
-          >
-            {checkoutLoading ? "Opening secure checkout..." : "Checkout securely"}
-          </button>
+          <Link className={`primary-button ${!cart.length ? "is-disabled" : ""}`} href="/cart" onClick={onClose}>
+            Checkout securely
+          </Link>
           <div className="wallet-row" aria-label="Express payment options">
             <span>Apple Pay</span>
             <span>Google Pay</span>
