@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BarChart3, Box, CheckCircle2, Heart, PackageCheck, ShieldAlert, Star, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatMoney, products } from "@/lib/products";
 import { AccountPage, ProductGrid } from "@/components/pages";
 import { useCommerce } from "@/components/commerce-context";
@@ -238,6 +238,8 @@ function AddressFields({ address, applyAddress, listId, savedAddresses = [], tit
   const [autocompleteService, setAutocompleteService] = useState(null);
   const [placesService, setPlacesService] = useState(null);
   const [sessionToken, setSessionToken] = useState(null);
+  const suppressedPredictionInput = useRef("");
+  const predictionRequestId = useRef(0);
 
   useEffect(() => {
     let mounted = true;
@@ -263,13 +265,21 @@ function AddressFields({ address, applyAddress, listId, savedAddresses = [], tit
   useEffect(() => {
     const input = address.line1.trim();
 
-    if (!autocompleteService || !sessionToken || input.length < 3) {
+    if (!autocompleteService || !sessionToken || input.length < 3 || input === suppressedPredictionInput.current) {
       setPredictions([]);
       return undefined;
     }
 
     const timeout = window.setTimeout(() => {
+      const requestId = predictionRequestId.current + 1;
+      predictionRequestId.current = requestId;
+
       autocompleteService.getPlacePredictions({ input, types: ["address"], sessionToken }, (results, status) => {
+        if (requestId !== predictionRequestId.current || input === suppressedPredictionInput.current) {
+          setPredictions([]);
+          return;
+        }
+
         if (status === window.google.maps.places.PlacesServiceStatus.OK && results?.length) {
           setPredictions(results.slice(0, 6));
           return;
@@ -283,12 +293,16 @@ function AddressFields({ address, applyAddress, listId, savedAddresses = [], tit
   }, [address.line1, autocompleteService, sessionToken]);
 
   const fillAddress = (nextAddress) => {
+    const normalized = normalizeAddress(nextAddress);
+    suppressedPredictionInput.current = normalized.line1.trim();
+    predictionRequestId.current += 1;
+    setPredictions([]);
+
     if (applyAddress) {
-      applyAddress(nextAddress);
+      applyAddress(normalized);
       return;
     }
 
-    const normalized = normalizeAddress(nextAddress);
     Object.entries(normalized).forEach(([field, value]) => update(field, value));
   };
 
@@ -325,7 +339,17 @@ function AddressFields({ address, applyAddress, listId, savedAddresses = [], tit
       ) : null}
       <label className="discount-field">
         <span>Address</span>
-        <input required autoComplete="street-address" list={listId} value={address.line1} onChange={(event) => update("line1", event.target.value)} placeholder="Street address" />
+        <input
+          required
+          autoComplete="street-address"
+          list={listId}
+          value={address.line1}
+          onChange={(event) => {
+            suppressedPredictionInput.current = "";
+            update("line1", event.target.value);
+          }}
+          placeholder="Street address"
+        />
         <datalist id={listId}>
           {savedAddresses.map((saved) => <option key={saved.id} value={saved.line1 || saved.line_1 || ""} />)}
         </datalist>
