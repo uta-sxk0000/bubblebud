@@ -190,7 +190,7 @@ export function CommerceProvider({ children }) {
     setUser(null);
   };
 
-  const startCheckout = async ({ provider = "stripe", checkoutMode = "guest", customer, shippingAddress, billingAddress, discountCode } = {}) => {
+  const startCheckout = async ({ provider = "stripe", checkoutMode = "guest", customer, shippingAddress, billingAddress, discountCode, saveAddress = false } = {}) => {
     setCheckoutError("");
     setCheckoutLoading(true);
     try {
@@ -207,6 +207,7 @@ export function CommerceProvider({ children }) {
           shippingAddress,
           billingAddress,
           discountCode,
+          saveAddress,
           items: cart.map((item) => ({
             productId: item.product.id,
             variant: item.variant,

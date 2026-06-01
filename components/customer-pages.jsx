@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { BarChart3, Box, CheckCircle2, Heart, PackageCheck, ShieldAlert, Star, Users } from "lucide-react";
+import { BarChart3, Box, CheckCircle2, CreditCard, Heart, LockKeyhole, PackageCheck, ShieldCheck, ShieldAlert, Star, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatMoney, products } from "@/lib/products";
 import { AccountPage, ProductGrid } from "@/components/pages";
@@ -79,7 +79,7 @@ function parseGoogleAddress(place) {
 }
 
 export function CartPage() {
-  const { account, cart, checkoutError, checkoutLoading, removeFromCart, startCheckout, subtotal, updateCartQuantity } = useCommerce();
+  const { account, cart, checkoutError, checkoutLoading, removeFromCart, signOut, startCheckout, subtotal, updateCartQuantity } = useCommerce();
   const [provider, setProvider] = useState("stripe");
   const [checkoutMode, setCheckoutMode] = useState("guest");
   const [customer, setCustomer] = useState({ name: account?.name || "", email: account?.email || "", phone: "" });
@@ -87,22 +87,42 @@ export function CartPage() {
   const [billingAddress, setBillingAddress] = useState({ line1: "", line2: "", city: "", state: "", postalCode: "", country: "US" });
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [sameBilling, setSameBilling] = useState(true);
+  const [saveAddress, setSaveAddress] = useState(Boolean(account));
   const [discountCode, setDiscountCode] = useState("");
   const shipping = subtotal > 50 || subtotal === 0 ? 0 : 5.95;
   const effectiveCustomer = { ...customer, email: account?.email || customer.email };
-  const isAccountCheckout = checkoutMode === "account";
+  const isLoggedInCheckout = Boolean(account);
+  const effectiveCheckoutMode = isLoggedInCheckout ? "account" : checkoutMode;
 
   useEffect(() => {
     if (account?.email) {
       setCustomer((current) => ({ ...current, name: current.name || account.name || "", email: account.email }));
+      setCheckoutMode("account");
+      setSaveAddress(true);
     }
   }, [account]);
 
   useEffect(() => {
     if (!account) return;
     fetch("/api/account/addresses")
-      .then((response) => (response.ok ? response.json() : { addresses: [] }))
-      .then((data) => setSavedAddresses(data.addresses || []))
+      .then((response) => (response.ok ? response.json() : { addresses: [], profile: null }))
+      .then((data) => {
+        const addresses = data.addresses || [];
+        const profile = data.profile || {};
+        const defaultAddress = addresses.find((address) => address.is_default) || addresses[0];
+
+        setSavedAddresses(addresses);
+        setCustomer((current) => ({
+          ...current,
+          name: profile.full_name || current.name || account.name || "",
+          email: profile.email || account.email || current.email,
+          phone: profile.phone || current.phone || defaultAddress?.phone || "",
+        }));
+
+        if (defaultAddress) {
+          setShippingAddress(normalizeAddress(defaultAddress));
+        }
+      })
       .catch(() => setSavedAddresses([]));
   }, [account]);
 
@@ -117,11 +137,12 @@ export function CartPage() {
     event.preventDefault();
     startCheckout({
       provider,
-      checkoutMode,
-      customer: isAccountCheckout ? effectiveCustomer : undefined,
-      shippingAddress: isAccountCheckout ? shippingAddress : undefined,
-      billingAddress: isAccountCheckout ? sameBilling ? shippingAddress : billingAddress : undefined,
+      checkoutMode: effectiveCheckoutMode,
+      customer: effectiveCustomer,
+      shippingAddress,
+      billingAddress: sameBilling ? shippingAddress : billingAddress,
       discountCode,
+      saveAddress: Boolean(account && saveAddress),
     });
   };
 
@@ -162,56 +183,44 @@ export function CartPage() {
           )}
         </div>
         <form className="checkout-card" onSubmit={submitCheckout}>
-          <h2>Secure checkout</h2>
-          <div className="payment-toggle" role="radiogroup" aria-label="Checkout type">
-            <button className={checkoutMode === "guest" ? "is-active" : ""} type="button" onClick={() => setCheckoutMode("guest")}>
-              Guest checkout
-            </button>
-            <button className={checkoutMode === "account" ? "is-active" : ""} type="button" onClick={() => setCheckoutMode("account")}>
-              Create / use account
-            </button>
+          <div className="checkout-heading">
+            <span><LockKeyhole size={16} /> Secure checkout</span>
+            <h2>{account ? `Checkout as ${customer.name || account.name}` : "Secure checkout"}</h2>
+            <p>Secure checkout powered by Stripe and PayPal.</p>
           </div>
-          <div className="payment-toggle" role="radiogroup" aria-label="Payment provider">
-            <button className={provider === "stripe" ? "is-active" : ""} type="button" onClick={() => setProvider("stripe")}>
-              Card / Wallet
-            </button>
-            <button className={provider === "paypal" ? "is-active" : ""} type="button" onClick={() => setProvider("paypal")}>
-              PayPal
-            </button>
-          </div>
-          {checkoutMode === "guest" ? (
-            <div className="checkout-section">
-              <h3>Guest checkout</h3>
-              <p className="form-note">Continue directly to secure checkout. Stripe or PayPal will collect the email and shipping details needed for your order.</p>
+          {!account ? (
+            <div className="checkout-mode-cards" role="radiogroup" aria-label="Checkout type">
+              <button className={checkoutMode === "guest" ? "is-active" : ""} type="button" onClick={() => setCheckoutMode("guest")}>
+                <strong>Guest checkout</strong>
+                <span>No account required. Track with order number and email.</span>
+              </button>
+              <button className={checkoutMode === "account" ? "is-active" : ""} type="button" onClick={() => setCheckoutMode("account")}>
+                <strong>Create / use account</strong>
+                <span>Save wishlist, addresses, and order history.</span>
+              </button>
             </div>
-          ) : (
-            <>
-              <div className="checkout-section">
-                <h3>Customer</h3>
-                {!account ? <p className="form-note">For a permanent account, create one first. You can still save these details for checkout.</p> : null}
-                {!account ? <Link className="secondary-button" href="/register">Create account</Link> : null}
-                <label className="discount-field">
-                  <span>Full name</span>
-                  <input required={isAccountCheckout} autoComplete="name" value={customer.name} onChange={(event) => updateCustomer("name", event.target.value)} placeholder="Your name" />
-                </label>
-                <label className="discount-field">
-                  <span>Email</span>
-                  <input required={isAccountCheckout} type="email" autoComplete="email" value={effectiveCustomer.email} disabled={Boolean(account)} onChange={(event) => updateCustomer("email", event.target.value)} placeholder="you@example.com" />
-                </label>
-                <label className="discount-field">
-                  <span>Phone optional</span>
-                  <input type="tel" autoComplete="tel" value={customer.phone} onChange={(event) => updateCustomer("phone", event.target.value)} placeholder="(555) 123-4567" />
-                </label>
-                {account ? <p className="form-note">Checking out with your BubbleBud account.</p> : null}
-              </div>
-              <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} savedAddresses={savedAddresses} applyAddress={applyAddress} listId="shipping-addresses" />
-              <label className="check-row">
-                <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
-                <span>Billing address is the same as shipping</span>
-              </label>
-              {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} savedAddresses={savedAddresses} applyAddress={null} listId="billing-addresses" /> : null}
-            </>
-          )}
+          ) : null}
+          <CustomerInformationCard
+            account={account}
+            checkoutMode={effectiveCheckoutMode}
+            customer={customer}
+            effectiveCustomer={effectiveCustomer}
+            signOut={signOut}
+            updateCustomer={updateCustomer}
+          />
+          <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} savedAddresses={savedAddresses} applyAddress={applyAddress} listId="shipping-addresses" />
+          {account ? (
+            <label className="check-row">
+              <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} />
+              <span>Save this address for future orders</span>
+            </label>
+          ) : null}
+          <label className="check-row">
+            <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
+            <span>Billing address is the same as shipping</span>
+          </label>
+          {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} savedAddresses={savedAddresses} applyAddress={null} listId="billing-addresses" /> : null}
+          <PaymentMethodSelector provider={provider} setProvider={setProvider} />
           <label className="discount-field">
             <span>Discount code</span>
             <input value={discountCode} onChange={(event) => setDiscountCode(event.target.value)} placeholder="Optional" />
@@ -226,9 +235,158 @@ export function CartPage() {
           <button className="primary-button" type="submit" disabled={!cart.length || checkoutLoading}>
             {checkoutLoading ? "Opening secure payment..." : provider === "paypal" ? "Pay with PayPal" : "Pay by card or wallet"}
           </button>
+          <CheckoutTrust />
         </form>
       </div>
     </section>
+  );
+}
+
+function CustomerInformationCard({ account, checkoutMode, customer, effectiveCustomer, signOut, updateCustomer }) {
+  return (
+    <div className="checkout-section customer-info-card">
+      <div>
+        <h3>Customer information</h3>
+        {account ? (
+          <p className="form-note">
+            Signed in as: <a href={`mailto:${account.email}`}>{account.email}</a>
+          </p>
+        ) : checkoutMode === "account" ? (
+          <p className="form-note">Create an account before checkout, or continue here and your order can still be tracked by email.</p>
+        ) : (
+          <p className="form-note">Enter your details so we can confirm and track your order.</p>
+        )}
+      </div>
+      {!account && checkoutMode === "account" ? (
+        <div className="checkout-link-row">
+          <Link className="secondary-button" href="/login">Log in</Link>
+          <Link className="secondary-button" href="/register">Create account</Link>
+        </div>
+      ) : null}
+      {account ? <button className="text-button checkout-signout" type="button" onClick={signOut}>Change account / Sign out</button> : null}
+      <label className="discount-field">
+        <span>Full name</span>
+        <input required autoComplete="name" value={customer.name} onChange={(event) => updateCustomer("name", event.target.value)} placeholder="Your name" />
+      </label>
+      <label className="discount-field">
+        <span>Email</span>
+        <input required type="email" autoComplete="email" value={effectiveCustomer.email} disabled={Boolean(account)} onChange={(event) => updateCustomer("email", event.target.value)} placeholder="you@example.com" />
+      </label>
+      <label className="discount-field">
+        <span>Phone optional</span>
+        <input type="tel" autoComplete="tel" value={customer.phone} onChange={(event) => updateCustomer("phone", event.target.value)} placeholder="(555) 123-4567" />
+      </label>
+    </div>
+  );
+}
+
+function PaymentLogo({ type }) {
+  const labels = {
+    visa: "Visa",
+    mastercard: "Mastercard",
+    amex: "American Express",
+    discover: "Discover",
+    apple: "Apple Pay",
+    google: "Google Pay",
+    paypal: "PayPal",
+  };
+
+  if (type === "mastercard") {
+    return (
+      <span className="payment-logo mastercard" aria-label={labels[type]}>
+        <svg viewBox="0 0 64 40" role="img" aria-hidden="true">
+          <rect width="64" height="40" rx="8" fill="#fff" />
+          <circle cx="26" cy="20" r="10" fill="#eb001b" />
+          <circle cx="38" cy="20" r="10" fill="#f79e1b" fillOpacity="0.92" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (type === "paypal") {
+    return (
+      <span className="payment-logo paypal-logo" aria-label={labels[type]}>
+        <svg viewBox="0 0 92 28" role="img" aria-hidden="true">
+          <text x="3" y="20" fontFamily="Arial, sans-serif" fontSize="20" fontWeight="800" fill="#003087">Pay</text>
+          <text x="42" y="20" fontFamily="Arial, sans-serif" fontSize="20" fontWeight="800" fill="#009cde">Pal</text>
+        </svg>
+      </span>
+    );
+  }
+
+  return (
+    <span className={`payment-logo ${type}`} aria-label={labels[type]}>
+      <svg viewBox="0 0 80 44" role="img" aria-hidden="true">
+        <rect x="1" y="1" width="78" height="42" rx="9" fill="white" />
+        <text x="40" y="27" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize={type === "discover" ? "13" : "15"} fontWeight="900">
+          {type === "visa" ? "VISA" : type === "amex" ? "AMEX" : type === "discover" ? "DISCOVER" : type === "apple" ? "Apple Pay" : "G Pay"}
+        </text>
+      </svg>
+    </span>
+  );
+}
+
+function PaymentMethodSelector({ provider, setProvider }) {
+  return (
+    <div className="payment-method-section">
+      <div className="checkout-section-title">
+        <h3>Payment method</h3>
+        <p>Choose a secure payment option.</p>
+      </div>
+      <div className="payment-method-cards" role="radiogroup" aria-label="Payment provider">
+        <button className={provider === "stripe" ? "payment-method-card is-active" : "payment-method-card"} type="button" role="radio" aria-checked={provider === "stripe"} onClick={() => setProvider("stripe")}>
+          <div className="payment-method-top">
+            <span className="payment-method-icon"><CreditCard size={20} /></span>
+            <div>
+              <strong>Card / Wallet</strong>
+              <p>Cards, Apple Pay, Google Pay, and Link when available.</p>
+            </div>
+            <ShieldCheck size={20} />
+          </div>
+          <div className="payment-logo-grid">
+            <PaymentLogo type="visa" />
+            <PaymentLogo type="mastercard" />
+            <PaymentLogo type="amex" />
+            <PaymentLogo type="discover" />
+            <PaymentLogo type="apple" />
+            <PaymentLogo type="google" />
+          </div>
+        </button>
+        <button className={provider === "paypal" ? "payment-method-card is-active" : "payment-method-card"} type="button" role="radio" aria-checked={provider === "paypal"} onClick={() => setProvider("paypal")}>
+          <div className="payment-method-top">
+            <PaymentLogo type="paypal" />
+            <div>
+              <strong>PayPal</strong>
+              <p>Pay securely with PayPal.</p>
+            </div>
+          </div>
+          <p className="paypal-subtitle">Checkout with your PayPal account.</p>
+        </button>
+      </div>
+      <div className="payment-security-grid" aria-label="Checkout security">
+        <span><LockKeyhole size={15} /> SSL Secured Checkout</span>
+        <span><ShieldCheck size={15} /> Stripe Protected Payments</span>
+        <span><CheckCircle2 size={15} /> PCI DSS Compliant</span>
+        <span><CheckCircle2 size={15} /> Secure 256-bit Encryption</span>
+      </div>
+    </div>
+  );
+}
+
+function CheckoutTrust() {
+  return (
+    <div className="checkout-trust-footer">
+      <span>Accepted payments</span>
+      <div>
+        <PaymentLogo type="visa" />
+        <PaymentLogo type="mastercard" />
+        <PaymentLogo type="amex" />
+        <PaymentLogo type="discover" />
+        <PaymentLogo type="apple" />
+        <PaymentLogo type="google" />
+        <PaymentLogo type="paypal" />
+      </div>
+    </div>
   );
 }
 

@@ -41,38 +41,6 @@ function seedProductRow(product) {
   };
 }
 
-async function saveAccountCheckoutAddress(supabase, user, payload) {
-  if (!user?.id || payload.checkoutMode !== "account" || !payload.shippingAddress?.line1) return;
-
-  const address = payload.shippingAddress;
-  const fullName = payload.customer?.name || user.user_metadata?.full_name || user.email?.split("@")[0] || "BubbleBud customer";
-  const phone = payload.customer?.phone || null;
-
-  const { data: existing } = await supabase
-    .from("addresses")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("line1", address.line1)
-    .eq("postal_code", address.postalCode)
-    .maybeSingle();
-
-  const row = {
-    ...(existing?.id ? { id: existing.id } : {}),
-    user_id: user.id,
-    label: existing?.id ? "Checkout" : "Checkout",
-    full_name: fullName,
-    line1: address.line1,
-    line2: address.line2 || null,
-    city: address.city,
-    state: address.state,
-    postal_code: address.postalCode,
-    country: address.country || "US",
-    phone,
-  };
-
-  await supabase.from("addresses").upsert(row);
-}
-
 export async function POST(request) {
   try {
     rateLimit(request, { key: "checkout", limit: 8, windowMs: 60_000 });
@@ -88,10 +56,8 @@ export async function POST(request) {
   }
 
   const user = await getCurrentUser();
-  const isAccountCheckout = payload.checkoutMode === "account";
-  const customerEmail = isAccountCheckout ? user?.email || payload.customer?.email : "";
-  const checkoutEmail = customerEmail || `checkout-${crypto.randomUUID()}@bubblebud.app`;
-  const emptyAddress = { line1: "", line2: "", city: "", state: "", postalCode: "", country: "US" };
+  const isAccountCheckout = Boolean(user?.id);
+  const checkoutEmail = isAccountCheckout ? user.email || payload.customer.email : payload.customer.email;
   const supabase = createAdminSupabase();
 
   const productIds = [...new Set(payload.items.map((item) => item.productId))];
@@ -170,10 +136,10 @@ export async function POST(request) {
       user_id: isAccountCheckout ? user?.id || null : null,
       provider: payload.provider,
       customer_email: checkoutEmail,
-      customer_name: payload.customer?.name || "Guest checkout",
-      customer_phone: payload.customer?.phone || null,
-      shipping_address: payload.shippingAddress || emptyAddress,
-      billing_address: payload.billingAddress || payload.shippingAddress || emptyAddress,
+      customer_name: payload.customer.name,
+      customer_phone: payload.customer.phone || null,
+      shipping_address: payload.shippingAddress,
+      billing_address: { ...payload.billingAddress, saveAddress: Boolean(payload.saveAddress) },
       items: intentItems,
       subtotal_cents: subtotalCents,
       discount_cents: discountCents,
@@ -186,8 +152,6 @@ export async function POST(request) {
     .single();
 
   if (intentError) return jsonError(intentError.message, 500);
-
-  await saveAccountCheckoutAddress(supabase, user, payload);
 
   if (shippingCents > 0) {
     stripeLineItems.push({
@@ -223,7 +187,7 @@ export async function POST(request) {
   const stripe = createStripe();
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    ...(customerEmail ? { customer_email: customerEmail } : {}),
+    customer_email: checkoutEmail,
     line_items: stripeLineItems,
     allow_promotion_codes: true,
     billing_address_collection: "required",
@@ -233,7 +197,8 @@ export async function POST(request) {
     metadata: {
       checkout_intent_id: checkoutIntent.id,
       user_id: isAccountCheckout ? user?.id || "" : "",
-      guest_email: user ? "" : customerEmail,
+      save_address: isAccountCheckout && payload.saveAddress ? "true" : "false",
+      guest_email: isAccountCheckout ? "" : checkoutEmail,
     },
     success_url: `${getSiteUrl()}/order-success?provider=stripe&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${getSiteUrl()}/order-failed?provider=stripe&checkout=${checkoutIntent.id}`,

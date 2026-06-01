@@ -21,9 +21,12 @@ export async function GET() {
   if (!user) return jsonError("Log in to view addresses.", 401);
 
   const supabase = createAdminSupabase();
-  const { data, error } = await supabase.from("addresses").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+  const [{ data, error }, { data: profile }] = await Promise.all([
+    supabase.from("addresses").select("*").eq("user_id", user.id).order("is_default", { ascending: false }).order("created_at", { ascending: false }),
+    supabase.from("profiles").select("full_name,email,phone").eq("id", user.id).maybeSingle(),
+  ]);
   if (error) return jsonError(error.message, 500);
-  return Response.json({ addresses: data || [] });
+  return Response.json({ addresses: data || [], profile });
 }
 
 export async function POST(request) {

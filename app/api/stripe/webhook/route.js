@@ -29,6 +29,12 @@ export async function POST(request) {
         const billingAddress = customerDetails.address
           ? { name: customerDetails.name || "", address: customerDetails.address }
           : null;
+        const { data: currentIntent } = await supabase
+          .from("checkout_intents")
+          .select("billing_address")
+          .eq("id", checkoutIntentId)
+          .maybeSingle();
+        const saveAddress = currentIntent?.billing_address?.saveAddress;
 
         await supabase
           .from("checkout_intents")
@@ -38,7 +44,7 @@ export async function POST(request) {
             customer_name: customerDetails.name || shippingDetails?.name || "BubbleBud customer",
             customer_phone: customerDetails.phone || null,
             ...(shippingDetails ? { shipping_address: shippingDetails } : {}),
-            ...(billingAddress ? { billing_address: billingAddress } : {}),
+            ...(billingAddress ? { billing_address: { ...billingAddress, ...(saveAddress !== undefined ? { saveAddress } : {}) } } : {}),
             updated_at: new Date().toISOString(),
           })
           .eq("id", checkoutIntentId);
