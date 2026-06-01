@@ -1613,6 +1613,7 @@ button:disabled {
 
 .payment-method-top.paypal-only {
   grid-template-columns: auto;
+  min-height: 46px;
 }
 
 .payment-method-icon {
@@ -1669,8 +1670,9 @@ button:disabled {
 }
 
 .paypal-logo {
-  width: 118px;
-  min-width: 118px;
+  width: 150px;
+  min-width: 150px;
+  height: 40px;
 }
 
 .checkout-trust-footer {
