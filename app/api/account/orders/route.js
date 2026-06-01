@@ -9,7 +9,7 @@ export async function GET() {
   const supabase = createAdminSupabase();
   const { data, error } = await supabase
     .from("orders")
-    .select("*, order_items(*)")
+    .select("*, order_items(*, products(images,slug,title))")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 

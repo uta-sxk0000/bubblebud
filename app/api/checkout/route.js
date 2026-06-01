@@ -41,6 +41,38 @@ function seedProductRow(product) {
   };
 }
 
+async function saveAccountCheckoutAddress(supabase, user, payload) {
+  if (!user?.id || payload.checkoutMode !== "account" || !payload.shippingAddress?.line1) return;
+
+  const address = payload.shippingAddress;
+  const fullName = payload.customer?.name || user.user_metadata?.full_name || user.email?.split("@")[0] || "BubbleBud customer";
+  const phone = payload.customer?.phone || null;
+
+  const { data: existing } = await supabase
+    .from("addresses")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("line1", address.line1)
+    .eq("postal_code", address.postalCode)
+    .maybeSingle();
+
+  const row = {
+    ...(existing?.id ? { id: existing.id } : {}),
+    user_id: user.id,
+    label: existing?.id ? "Checkout" : "Checkout",
+    full_name: fullName,
+    line1: address.line1,
+    line2: address.line2 || null,
+    city: address.city,
+    state: address.state,
+    postal_code: address.postalCode,
+    country: address.country || "US",
+    phone,
+  };
+
+  await supabase.from("addresses").upsert(row);
+}
+
 export async function POST(request) {
   try {
     rateLimit(request, { key: "checkout", limit: 8, windowMs: 60_000 });
@@ -154,6 +186,8 @@ export async function POST(request) {
     .single();
 
   if (intentError) return jsonError(intentError.message, 500);
+
+  await saveAccountCheckoutAddress(supabase, user, payload);
 
   if (shippingCents > 0) {
     stripeLineItems.push({

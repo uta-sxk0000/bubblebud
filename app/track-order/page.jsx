@@ -5,6 +5,11 @@ export const metadata = {
   description: "Track your BubbleBud order status with an order number and email address.",
 };
 
-export default function Page() {
-  return <TrackOrderPage />;
+export default async function Page({ searchParams }) {
+  const params = await searchParams;
+
+  return <TrackOrderPage initialQuery={{
+    orderNumber: params?.orderNumber || params?.order || "",
+    email: params?.email || "",
+  }} />;
 }

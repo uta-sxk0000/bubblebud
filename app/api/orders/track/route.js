@@ -25,7 +25,7 @@ export async function POST(request) {
   const supabase = createAdminSupabase();
   const { data, error } = await supabase
     .from("orders")
-    .select("order_number,status,payment_status,shipping_method,tracking_number,tracking_url,created_at,updated_at")
+    .select("*, order_items(*, products(images,slug,title))")
     .eq("order_number", payload.orderNumber)
     .eq("customer_email", payload.email)
     .maybeSingle();

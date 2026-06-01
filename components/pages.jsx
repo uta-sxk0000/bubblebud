@@ -7,9 +7,19 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
   BadgeCheck,
+  CalendarDays,
+  CheckCircle2,
+  CircleDollarSign,
+  ClipboardCheck,
+  Download,
+  ExternalLink,
   Heart,
+  Home,
   Mail,
+  MapPin,
+  MessageCircle,
   PackageCheck,
+  ReceiptText,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -20,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { categories, formatMoney, getRelatedProducts, getReviewSummary, products } from "@/lib/products";
+import { moneyFromCents } from "@/lib/commerce";
 import { useCommerce } from "@/components/commerce-context";
 import { TrustStrip } from "@/components/site-frame";
 
@@ -27,6 +38,14 @@ const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   show: { opacity: 1, y: 0 },
 };
+
+const trackingSteps = [
+  { key: "pending", label: "Pending", icon: ClipboardCheck },
+  { key: "paid", label: "Paid", icon: CircleDollarSign },
+  { key: "processing", label: "Processing", icon: PackageCheck },
+  { key: "shipped", label: "Shipped", icon: Truck },
+  { key: "delivered", label: "Delivered", icon: Home },
+];
 
 const detailIntroByCategory = {
   Accessories:
@@ -662,6 +681,7 @@ export function AccountPage({ initialTab = "Login" }) {
   const { account, signOut, wishlist } = useCommerce();
   const [tab, setTab] = useState(initialTab);
   const [orders, setOrders] = useState([]);
+  const [selectedTrackingOrder, setSelectedTrackingOrder] = useState(null);
   const wishlistProducts = products.filter((product) => wishlist.includes(product.id));
   const accountTabs = account ? ["Order history", "Track order", "Wishlist", "Addresses"] : ["Login", "Register", "Forgot password"];
 
@@ -706,8 +726,11 @@ export function AccountPage({ initialTab = "Login" }) {
           {tab === "Login" || tab === "Register" || tab === "Forgot password" ? (
             <AuthForm mode={tab} account={account} />
           ) : null}
-          {tab === "Order history" ? <OrderHistory orders={orders} onTrack={() => setTab("Track order")} /> : null}
-          {tab === "Track order" ? <TrackOrderPanel compact /> : null}
+          {tab === "Order history" ? <OrderHistory orders={orders} onTrack={(order) => {
+            setSelectedTrackingOrder(order);
+            setTab("Track order");
+          }} /> : null}
+          {tab === "Track order" ? <TrackOrderPanel compact initialOrder={selectedTrackingOrder} /> : null}
           {tab === "Wishlist" ? <ProductGrid products={wishlistProducts.length ? wishlistProducts : products.slice(0, 3)} /> : null}
           {tab === "Addresses" ? <AddressBook /> : null}
         </div>
@@ -786,7 +809,7 @@ function OrderHistory({ orders, onTrack }) {
             <span>{order.status}</span>
           </div>
           <p>{order.order_items?.map((item) => `${item.quantity}x ${item.product_title}`).join(", ")}</p>
-          <button type="button" onClick={onTrack}>Track order</button>
+          <button type="button" onClick={() => onTrack(order)}>Track order</button>
         </article>
       ))}
     </div>
@@ -860,22 +883,177 @@ function AddressBook() {
   );
 }
 
-export function TrackOrderPage() {
+export function TrackOrderPage({ initialQuery = {} }) {
   return (
     <section className="track-page">
       <div className="page-hero compact">
         <p className="eyebrow">Track order</p>
-        <h1>Clear updates from purchase to delivery.</h1>
+        <h1>Premium order tracking, from checkout to doorstep.</h1>
       </div>
-      <TrackOrderPanel />
+      <TrackOrderPanel initialQuery={initialQuery} />
     </section>
   );
 }
 
-function TrackOrderPanel({ compact = false }) {
+function getOrderStage(order) {
+  if (!order) return "pending";
+  const status = String(order.status || "").toLowerCase();
+  if (trackingSteps.some((step) => step.key === status)) return status;
+  if (order.payment_status === "paid") return "paid";
+  return "pending";
+}
+
+function formatDateTime(value, fallback = "Pending") {
+  if (!value) return fallback;
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatDateOnly(value) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function getEstimatedDelivery(order) {
+  const created = order?.created_at ? new Date(order.created_at) : new Date();
+  const days = order?.shipping_cents === 0 ? 5 : 4;
+  const eta = new Date(created);
+  eta.setDate(created.getDate() + days);
+  return order?.status === "delivered" ? "Delivered" : formatDateOnly(eta);
+}
+
+function getCarrier(order) {
+  const source = `${order?.tracking_url || ""} ${order?.tracking_number || ""}`.toLowerCase();
+  if (source.includes("ups") || /^1z/i.test(order?.tracking_number || "")) return "UPS";
+  if (source.includes("fedex")) return "FedEx";
+  if (source.includes("dhl")) return "DHL";
+  if (source.includes("usps") || /^\d{20,34}$/.test(order?.tracking_number || "")) return "USPS";
+  return "BubbleBud";
+}
+
+function orderItemImage(item) {
+  return item?.products?.images?.[0] || products.find((product) => product.id === item.product_id)?.image || "/images/hero-plush.jpg";
+}
+
+function formatAddress(address = {}) {
+  const line1 = address.line1 || address.line_1 || "";
+  const line2 = address.line2 || address.line_2 || "";
+  const cityState = [address.city, address.state].filter(Boolean).join(", ");
+  const cityStateZip = [cityState, address.postalCode || address.postal_code].filter(Boolean).join(" ");
+  return [line1, line2, cityStateZip, address.country].filter(Boolean);
+}
+
+function buildTimeline(order) {
+  const stage = getOrderStage(order);
+  const currentIndex = trackingSteps.findIndex((step) => step.key === stage);
+  const shippedOrDelivered = currentIndex >= trackingSteps.findIndex((step) => step.key === "shipped");
+  const delivered = stage === "delivered";
+
+  return [
+    ["Order Placed", order?.created_at, "We received your BubbleBud order and reserved your items.", true],
+    ["Payment Confirmed", order?.paid_at || order?.created_at, "Your payment was securely verified.", order?.payment_status === "paid"],
+    ["Order Processing", currentIndex >= 2 ? order?.updated_at || order?.created_at : null, "Your order is being prepared by the BubbleBud team.", currentIndex >= 2],
+    ["Package Packed", shippedOrDelivered ? order?.updated_at : null, "Items are packed and ready for carrier handoff.", shippedOrDelivered],
+    ["Shipped", shippedOrDelivered ? order?.updated_at : null, "Your package is moving through the carrier network.", shippedOrDelivered],
+    ["Out for Delivery", delivered ? order?.updated_at : null, "The carrier has the package out for final delivery.", delivered],
+    ["Delivered", delivered ? order?.updated_at : null, "Delivered. We hope it feels as good as it looks.", delivered],
+  ];
+}
+
+function downloadReceipt(order) {
+  if (!order || typeof window === "undefined") return;
+
+  const lines = [
+    "BubbleBud Receipt",
+    `Order: ${order.order_number}`,
+    `Date: ${formatDateTime(order.created_at)}`,
+    `Customer: ${order.customer_name}`,
+    `Email: ${order.customer_email}`,
+    "",
+    ...(order.order_items || []).map((item) => `${item.quantity}x ${item.product_title} (${item.variant}) - ${moneyFromCents(item.total_cents)}`),
+    "",
+    `Subtotal: ${moneyFromCents(order.subtotal_cents)}`,
+    `Shipping: ${moneyFromCents(order.shipping_cents)}`,
+    `Tax: ${moneyFromCents(order.tax_cents)}`,
+    `Total: ${moneyFromCents(order.total_cents)}`,
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${order.order_number}-receipt.txt`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function TrackOrderPanel({ compact = false, initialOrder = null, initialQuery = {} }) {
+  const { account } = useCommerce();
   const [form, setForm] = useState({ orderNumber: "", email: "" });
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(initialOrder);
+  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const statusKey = getOrderStage(result);
+  const currentStepIndex = Math.max(0, trackingSteps.findIndex((step) => step.key === statusKey));
+  const progress = trackingSteps.length > 1 ? (currentStepIndex / (trackingSteps.length - 1)) * 100 : 0;
+  const timeline = result ? buildTimeline(result) : [];
+
+  const fetchTracking = async (nextForm, quiet = false) => {
+    if (!nextForm.orderNumber || !nextForm.email) return;
+    if (!quiet) {
+      setLoading(true);
+      setMessage("");
+    }
+
+    try {
+      const response = await fetch("/api/orders/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextForm),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Order not found.");
+      setResult(data.order);
+      setMessage("");
+    } catch (error) {
+      if (!quiet) {
+        setResult(null);
+        setMessage(error.message);
+      }
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!initialOrder) return;
+    const nextForm = {
+      orderNumber: initialOrder.order_number || "",
+      email: initialOrder.customer_email || account?.email || "",
+    };
+    setResult(initialOrder);
+    setForm(nextForm);
+  }, [account?.email, initialOrder]);
+
+  useEffect(() => {
+    const orderNumber = initialQuery.orderNumber || "";
+    const email = initialQuery.email || account?.email || "";
+    if (!orderNumber) return;
+
+    const nextForm = { orderNumber, email };
+    setForm(nextForm);
+    if (email) fetchTracking(nextForm, true);
+  }, [account?.email, initialQuery.email, initialQuery.orderNumber]);
+
+  useEffect(() => {
+    if (!result || !form.orderNumber || !form.email) return undefined;
+    const interval = window.setInterval(() => fetchTracking(form, true), 30000);
+    return () => window.clearInterval(interval);
+  }, [form, result]);
 
   return (
     <div className={compact ? "track-panel is-compact" : "track-panel"}>
@@ -883,47 +1061,145 @@ function TrackOrderPanel({ compact = false }) {
         className="track-form"
         onSubmit={(event) => {
           event.preventDefault();
-          setMessage("");
-          fetch("/api/orders/track", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(form),
-          })
-            .then(async (response) => {
-              const data = await response.json();
-              if (!response.ok) throw new Error(data.error || "Order not found.");
-              setResult(data.order);
-            })
-            .catch((error) => {
-              setResult(null);
-              setMessage(error.message);
-            });
+          fetchTracking(form);
         }}
       >
         <input required value={form.orderNumber} onChange={(event) => setForm((value) => ({ ...value, orderNumber: event.target.value }))} placeholder="Order number" />
         <input required type="email" value={form.email} onChange={(event) => setForm((value) => ({ ...value, email: event.target.value }))} placeholder="Email address" />
-        <button className="primary-button" type="submit">
-          Track order
+        <button className="primary-button" type="submit" disabled={loading}>
+          {loading ? "Finding order..." : "Track order"}
         </button>
       </form>
       {message ? <p className="form-error">{message}</p> : null}
+      {loading && !result ? <TrackingSkeleton /> : null}
       {result ? (
-        <div className="tracking-card">
-          {["pending", "paid", "processing", "shipped", "delivered"].map((step) => {
-            const steps = ["pending", "paid", "processing", "shipped", "delivered"];
-            const currentIndex = Math.max(0, steps.indexOf(result.status));
-            const stepIndex = steps.indexOf(step);
-            return (
-            <div className={currentIndex >= stepIndex ? "is-done" : ""} key={step}>
-              <span />
-              <strong>{step}</strong>
-              <small>{result.tracking_number && step === "shipped" ? result.tracking_number : result.status === step ? "Current status" : "Updates when available"}</small>
+        <article className={`premium-tracking-card status-${statusKey}`}>
+          {statusKey === "delivered" ? <DeliveredConfetti /> : null}
+          <div className="tracking-hero-card">
+            <div>
+              <p className="eyebrow">Order {result.order_number}</p>
+              <h2>{statusKey === "delivered" ? "Delivered with care." : "Your order is moving."}</h2>
+              <p>Placed {formatDateTime(result.created_at)} for {result.customer_name || "BubbleBud customer"}.</p>
             </div>
-            );
-          })}
-          {result.tracking_url ? <a className="secondary-link" href={result.tracking_url}>Open carrier tracking</a> : null}
+            <div className="tracking-badge-stack">
+              <span className="status-pill paid"><ShieldCheck size={15} /> Payment {result.payment_status}</span>
+              <span className={`status-pill ${statusKey}`}><Truck size={15} /> {statusKey}</span>
+            </div>
+          </div>
+
+          <div className="progress-card">
+            <div className="progress-line" aria-hidden="true">
+              <span style={{ width: `${progress}%` }} />
+            </div>
+            <div className="progress-steps" aria-label="Order progress">
+              {trackingSteps.map((step, index) => {
+                const Icon = step.icon;
+                const state = index < currentStepIndex ? "is-complete" : index === currentStepIndex ? "is-current" : "is-future";
+                return (
+                  <div className={`progress-step ${state}`} key={step.key}>
+                    <div><Icon size={22} /></div>
+                    <strong>{step.label}</strong>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="tracking-info-grid">
+            <section className="delivery-card">
+              <div className="carrier-logo">{getCarrier(result)}</div>
+              <div>
+                <span>Estimated delivery</span>
+                <strong>{getEstimatedDelivery(result)}</strong>
+                <p>{result.shipping_method || "Standard shipping"} - {result.tracking_number || "Tracking number pending"}</p>
+              </div>
+              <div className="confidence-meter">
+                <span style={{ width: statusKey === "delivered" ? "100%" : statusKey === "shipped" ? "82%" : "64%" }} />
+              </div>
+              <small>{statusKey === "delivered" ? "Delivery complete" : statusKey === "shipped" ? "High delivery confidence" : "On schedule after carrier handoff"}</small>
+            </section>
+
+            <section className="shipping-info-card">
+              <h3>Shipping information</h3>
+              <p><strong>{result.customer_name}</strong></p>
+              {formatAddress(result.shipping_address).map((line) => <p key={line}>{line}</p>)}
+              <p>{result.customer_phone || "Phone not provided"}</p>
+              <p>{result.customer_email}</p>
+            </section>
+          </div>
+
+          <section className="shipment-timeline">
+            <h3>Shipment timeline</h3>
+            {timeline.map(([label, timestamp, description, complete]) => (
+              <div className={complete ? "is-complete" : ""} key={label}>
+                <span>{complete ? <CheckCircle2 size={16} /> : <CalendarDays size={16} />}</span>
+                <div>
+                  <strong>{label}</strong>
+                  <small>{formatDateTime(timestamp)}</small>
+                  <p>{description}</p>
+                </div>
+              </div>
+            ))}
+          </section>
+
+          <section className="tracking-products">
+            <h3>Product summary</h3>
+            {(result.order_items || []).map((item) => (
+              <div className="tracking-product-card" key={item.id}>
+                <img src={orderItemImage(item)} alt="" />
+                <div>
+                  <strong>{item.product_title}</strong>
+                  <span>{item.variant || "Default"} - Qty {item.quantity}</span>
+                </div>
+                <div>
+                  <span>Subtotal</span>
+                  <strong>{moneyFromCents(item.total_cents)}</strong>
+                </div>
+              </div>
+            ))}
+            <div className="tracking-total-row">
+              <span>Total paid</span>
+              <strong>{moneyFromCents(result.total_cents)}</strong>
+            </div>
+          </section>
+
+          <div className="tracking-actions">
+            <Link className="primary-button" href="/shop">Continue Shopping</Link>
+            <Link className="secondary-button" href={`/contact?order=${encodeURIComponent(result.order_number)}`}><MessageCircle size={16} /> Contact Support</Link>
+            <button className="secondary-button" type="button" onClick={() => downloadReceipt(result)}><Download size={16} /> Download Receipt</button>
+            {result.tracking_url ? (
+              <a className="secondary-button" href={result.tracking_url} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Track Carrier Shipment</a>
+            ) : (
+              <button className="secondary-button" type="button" disabled><ExternalLink size={16} /> Carrier Pending</button>
+            )}
+          </div>
+        </article>
+      ) : !loading ? (
+        <div className="tracking-empty-state">
+          <ReceiptText size={34} />
+          <h3>Enter your order number and email.</h3>
+          <p>Guests can track with the same email used at checkout. Logged-in customers can open tracking directly from order history.</p>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function TrackingSkeleton() {
+  return (
+    <div className="tracking-skeleton" aria-label="Loading order tracking">
+      <span />
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+}
+
+function DeliveredConfetti() {
+  return (
+    <div className="delivered-confetti" aria-hidden="true">
+      {Array.from({ length: 14 }).map((_, index) => <span key={index} />)}
     </div>
   );
 }

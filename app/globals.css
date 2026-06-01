@@ -1636,6 +1636,434 @@ button:disabled {
   background: var(--pink);
 }
 
+.premium-tracking-card {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  overflow: hidden;
+  padding: clamp(16px, 3vw, 26px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--pink) 28%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--paper) 96%, var(--pink-soft)), var(--paper));
+  box-shadow: var(--shadow);
+}
+
+.tracking-hero-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: start;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--paper) 84%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.tracking-hero-card h2 {
+  margin: 0;
+  font-size: clamp(28px, 5vw, 54px);
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.tracking-hero-card p {
+  max-width: 620px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.tracking-badge-stack {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: capitalize;
+  box-shadow: 0 10px 26px rgba(17, 17, 17, 0.06);
+}
+
+.status-pill.paid,
+.status-pill.delivered,
+.status-pill.shipped {
+  border-color: color-mix(in srgb, var(--pink) 60%, var(--line));
+  background: var(--pink-soft);
+}
+
+.progress-card,
+.delivery-card,
+.shipping-info-card,
+.shipment-timeline,
+.tracking-products,
+.tracking-empty-state,
+.tracking-skeleton {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+  box-shadow: 0 18px 50px rgba(17, 17, 17, 0.07);
+}
+
+.progress-card {
+  position: relative;
+  padding: 28px 18px 20px;
+}
+
+.progress-line {
+  position: absolute;
+  top: 49px;
+  left: 54px;
+  right: 54px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--soft-2);
+}
+
+.progress-line span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--pink), #111);
+  transition: width 700ms ease;
+}
+
+.progress-steps {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.progress-step {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.progress-step div {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.progress-step strong {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.progress-step.is-complete,
+.progress-step.is-current {
+  color: var(--ink);
+}
+
+.progress-step.is-complete div {
+  border-color: transparent;
+  background: var(--pink);
+}
+
+.progress-step.is-current div {
+  border-color: var(--pink);
+  background: var(--paper);
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--pink) 22%, transparent), 0 16px 32px rgba(247, 182, 200, 0.38);
+  transform: translateY(-2px);
+}
+
+.tracking-info-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 16px;
+}
+
+.delivery-card,
+.shipping-info-card,
+.shipment-timeline,
+.tracking-products {
+  padding: 20px;
+}
+
+.delivery-card {
+  display: grid;
+  gap: 14px;
+}
+
+.carrier-logo {
+  width: fit-content;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.delivery-card span,
+.tracking-product-card span,
+.tracking-total-row span,
+.shipping-info-card h3,
+.shipment-timeline h3,
+.tracking-products h3 {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.delivery-card strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 28px;
+}
+
+.delivery-card p,
+.delivery-card small,
+.shipping-info-card p,
+.shipment-timeline p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.confidence-meter {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--soft-2);
+}
+
+.confidence-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--pink), #111);
+}
+
+.shipping-info-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.shipping-info-card h3,
+.shipment-timeline h3,
+.tracking-products h3 {
+  margin: 0 0 6px;
+}
+
+.shipment-timeline {
+  display: grid;
+  gap: 12px;
+}
+
+.shipment-timeline > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.shipment-timeline > div > span {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--muted);
+}
+
+.shipment-timeline > div.is-complete > span {
+  background: var(--pink);
+  color: #111;
+}
+
+.shipment-timeline strong {
+  display: block;
+  font-size: 14px;
+}
+
+.shipment-timeline small {
+  display: block;
+  margin: 3px 0 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.tracking-products {
+  display: grid;
+  gap: 12px;
+}
+
+.tracking-product-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.tracking-product-card img {
+  aspect-ratio: 1;
+  border-radius: 10px;
+}
+
+.tracking-product-card strong {
+  display: block;
+}
+
+.tracking-product-card div:last-child {
+  text-align: right;
+}
+
+.tracking-total-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.tracking-total-row strong {
+  font-size: 20px;
+}
+
+.tracking-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tracking-actions .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.tracking-empty-state,
+.tracking-skeleton {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 34px 22px;
+  text-align: center;
+}
+
+.tracking-empty-state p {
+  max-width: 560px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.tracking-skeleton span {
+  width: 100%;
+  height: 18px;
+  max-width: 680px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--soft-2), var(--paper), var(--soft-2));
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.1s ease-in-out infinite;
+}
+
+.tracking-skeleton span:first-child {
+  height: 64px;
+}
+
+.delivered-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.delivered-confetti span {
+  position: absolute;
+  top: -20px;
+  left: calc(var(--i, 1) * 7%);
+  width: 8px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--pink);
+  animation: confetti-fall 2.4s ease-in-out infinite;
+}
+
+.delivered-confetti span:nth-child(2n) {
+  background: #111;
+  animation-delay: 0.2s;
+}
+
+.delivered-confetti span:nth-child(3n) {
+  background: #fff;
+  border: 1px solid var(--line);
+  animation-delay: 0.4s;
+}
+
+.delivered-confetti span:nth-child(1) { left: 6%; }
+.delivered-confetti span:nth-child(2) { left: 14%; }
+.delivered-confetti span:nth-child(3) { left: 22%; }
+.delivered-confetti span:nth-child(4) { left: 31%; }
+.delivered-confetti span:nth-child(5) { left: 39%; }
+.delivered-confetti span:nth-child(6) { left: 47%; }
+.delivered-confetti span:nth-child(7) { left: 55%; }
+.delivered-confetti span:nth-child(8) { left: 63%; }
+.delivered-confetti span:nth-child(9) { left: 71%; }
+.delivered-confetti span:nth-child(10) { left: 79%; }
+.delivered-confetti span:nth-child(11) { left: 86%; }
+.delivered-confetti span:nth-child(12) { left: 92%; }
+.delivered-confetti span:nth-child(13) { left: 34%; }
+.delivered-confetti span:nth-child(14) { left: 68%; }
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@keyframes confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) rotate(0deg);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(360px) rotate(260deg);
+  }
+}
+
 .order-detail-card {
   display: grid;
   gap: 18px;
@@ -2355,6 +2783,38 @@ button:disabled {
 
   .order-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tracking-hero-card,
+  .tracking-info-grid,
+  .tracking-product-card {
+    grid-template-columns: 1fr;
+  }
+
+  .tracking-hero-card {
+    display: grid;
+  }
+
+  .tracking-badge-stack {
+    justify-content: flex-start;
+  }
+
+  .progress-card {
+    overflow-x: auto;
+  }
+
+  .progress-steps {
+    min-width: 620px;
+  }
+
+  .progress-line {
+    left: 60px;
+    right: auto;
+    width: 500px;
+  }
+
+  .tracking-product-card div:last-child {
+    text-align: left;
   }
 
   .promo-banner {
