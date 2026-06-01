@@ -281,8 +281,12 @@ function CartDrawer({ onClose }) {
               <dt>Shipping</dt>
               <dd>{shipping ? formatMoney(shipping) : "Free"}</dd>
             </div>
+            <div>
+              <dt>Tax</dt>
+              <dd>Stripe Tax at checkout</dd>
+            </div>
             <div className="total-row">
-              <dt>Total</dt>
+              <dt>Estimated total</dt>
               <dd>{formatMoney(total)}</dd>
             </div>
           </dl>

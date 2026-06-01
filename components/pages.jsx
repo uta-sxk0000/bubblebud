@@ -1157,9 +1157,12 @@ function TrackOrderPanel({ compact = false, initialOrder = null, initialQuery = 
                 </div>
               </div>
             ))}
-            <div className="tracking-total-row">
-              <span>Total paid</span>
-              <strong>{moneyFromCents(result.total_cents)}</strong>
+            <div className="tracking-order-totals">
+              <div><span>Subtotal</span><strong>{moneyFromCents(result.subtotal_cents)}</strong></div>
+              <div><span>Shipping</span><strong>{moneyFromCents(result.shipping_cents)}</strong></div>
+              <div><span>Tax</span><strong>{moneyFromCents(result.tax_cents)}</strong></div>
+              {result.discount_cents ? <div><span>Discount</span><strong>-{moneyFromCents(result.discount_cents)}</strong></div> : null}
+              <div className="tracking-total-row"><span>Total paid</span><strong>{moneyFromCents(result.total_cents)}</strong></div>
             </div>
           </section>
 

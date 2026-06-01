@@ -93,6 +93,7 @@ export function CartPage() {
   const effectiveCustomer = { ...customer, email: account?.email || customer.email };
   const isLoggedInCheckout = Boolean(account);
   const effectiveCheckoutMode = isLoggedInCheckout ? "account" : checkoutMode;
+  const isGuestExpress = !account && checkoutMode === "guest";
 
   useEffect(() => {
     if (account?.email) {
@@ -138,9 +139,9 @@ export function CartPage() {
     startCheckout({
       provider,
       checkoutMode: effectiveCheckoutMode,
-      customer: effectiveCustomer,
-      shippingAddress,
-      billingAddress: sameBilling ? shippingAddress : billingAddress,
+      customer: isGuestExpress ? undefined : effectiveCustomer,
+      shippingAddress: isGuestExpress ? undefined : shippingAddress,
+      billingAddress: isGuestExpress ? undefined : sameBilling ? shippingAddress : billingAddress,
       discountCode,
       saveAddress: Boolean(account && saveAddress),
     });
@@ -200,26 +201,35 @@ export function CartPage() {
               </button>
             </div>
           ) : null}
-          <CustomerInformationCard
-            account={account}
-            checkoutMode={effectiveCheckoutMode}
-            customer={customer}
-            effectiveCustomer={effectiveCustomer}
-            signOut={signOut}
-            updateCustomer={updateCustomer}
-          />
-          <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} savedAddresses={savedAddresses} applyAddress={applyAddress} listId="shipping-addresses" />
-          {account ? (
-            <label className="check-row">
-              <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} />
-              <span>Save this address for future orders</span>
-            </label>
-          ) : null}
-          <label className="check-row">
-            <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
-            <span>Billing address is the same as shipping</span>
-          </label>
-          {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} savedAddresses={savedAddresses} applyAddress={null} listId="billing-addresses" /> : null}
+          {isGuestExpress ? (
+            <div className="checkout-section guest-fast-card">
+              <h3>Fast guest checkout</h3>
+              <p className="form-note">No BubbleBud account form needed. Stripe or PayPal will collect the email and delivery details required for payment and tracking. Stripe calculates tax securely when card checkout is selected.</p>
+            </div>
+          ) : (
+            <>
+              <CustomerInformationCard
+                account={account}
+                checkoutMode={effectiveCheckoutMode}
+                customer={customer}
+                effectiveCustomer={effectiveCustomer}
+                signOut={signOut}
+                updateCustomer={updateCustomer}
+              />
+              <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} savedAddresses={savedAddresses} applyAddress={applyAddress} listId="shipping-addresses" />
+              {account ? (
+                <label className="check-row">
+                  <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} />
+                  <span>Save this address for future orders</span>
+                </label>
+              ) : null}
+              <label className="check-row">
+                <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
+                <span>Billing address is the same as shipping</span>
+              </label>
+              {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} savedAddresses={savedAddresses} applyAddress={null} listId="billing-addresses" /> : null}
+            </>
+          )}
           <PaymentMethodSelector provider={provider} setProvider={setProvider} />
           <label className="discount-field">
             <span>Discount code</span>
@@ -228,8 +238,8 @@ export function CartPage() {
           <dl>
             <div><dt>Subtotal</dt><dd>{formatMoney(subtotal)}</dd></div>
             <div><dt>Shipping</dt><dd>{shipping ? formatMoney(shipping) : "Free"}</dd></div>
-            <div><dt>Tax</dt><dd>Calculated at checkout</dd></div>
-            <div className="total-row"><dt>Total today</dt><dd>{formatMoney(subtotal + shipping)}</dd></div>
+            <div><dt>Tax</dt><dd>{provider === "stripe" ? "Calculated by Stripe Tax" : "Calculated at checkout"}</dd></div>
+            <div className="total-row"><dt>Estimated total</dt><dd>{formatMoney(subtotal + shipping)}</dd></div>
           </dl>
           {checkoutError ? <p className="form-error">{checkoutError}</p> : null}
           <button className="primary-button" type="submit" disabled={!cart.length || checkoutLoading}>

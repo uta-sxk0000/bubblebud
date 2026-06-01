@@ -2163,11 +2163,22 @@ button:disabled {
   text-align: right;
 }
 
+.tracking-order-totals {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.tracking-order-totals div,
 .tracking-total-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 12px;
+}
+
+.tracking-total-row {
+  padding-top: 8px;
   border-top: 1px solid var(--line);
 }
 

@@ -57,8 +57,14 @@ export async function POST(request) {
 
   const user = await getCurrentUser();
   const isAccountCheckout = Boolean(user?.id);
-  const checkoutEmail = isAccountCheckout ? user.email || payload.customer.email : payload.customer.email;
+  const checkoutEmail = isAccountCheckout ? user.email || payload.customer?.email : payload.customer?.email || `checkout-${crypto.randomUUID()}@bubblebud.app`;
+  const shouldPrefillStripeEmail = isAccountCheckout || Boolean(payload.customer?.email);
+  const emptyAddress = { line1: "", line2: "", city: "", state: "", postalCode: "", country: "US" };
   const supabase = createAdminSupabase();
+
+  if (isAccountCheckout && (!payload.customer?.name || !payload.shippingAddress || !payload.billingAddress)) {
+    return jsonError("Customer and shipping details are required for logged-in checkout.", 422);
+  }
 
   const productIds = [...new Set(payload.items.map((item) => item.productId))];
   const { data: products, error: productError } = await supabase
@@ -136,10 +142,10 @@ export async function POST(request) {
       user_id: isAccountCheckout ? user?.id || null : null,
       provider: payload.provider,
       customer_email: checkoutEmail,
-      customer_name: payload.customer.name,
-      customer_phone: payload.customer.phone || null,
-      shipping_address: payload.shippingAddress,
-      billing_address: { ...payload.billingAddress, saveAddress: Boolean(payload.saveAddress) },
+      customer_name: payload.customer?.name || "Guest checkout",
+      customer_phone: payload.customer?.phone || null,
+      shipping_address: payload.shippingAddress || emptyAddress,
+      billing_address: { ...(payload.billingAddress || payload.shippingAddress || emptyAddress), saveAddress: Boolean(payload.saveAddress) },
       items: intentItems,
       subtotal_cents: subtotalCents,
       discount_cents: discountCents,
@@ -187,9 +193,10 @@ export async function POST(request) {
   const stripe = createStripe();
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    customer_email: checkoutEmail,
+    ...(shouldPrefillStripeEmail ? { customer_email: checkoutEmail } : {}),
     line_items: stripeLineItems,
     allow_promotion_codes: true,
+    automatic_tax: { enabled: true },
     billing_address_collection: "required",
     shipping_address_collection: {
       allowed_countries: ["US"],

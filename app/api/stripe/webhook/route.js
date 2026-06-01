@@ -29,6 +29,9 @@ export async function POST(request) {
         const billingAddress = customerDetails.address
           ? { name: customerDetails.name || "", address: customerDetails.address }
           : null;
+        const taxCents = session.total_details?.amount_tax || 0;
+        const discountCents = session.total_details?.amount_discount || 0;
+        const totalCents = session.amount_total || 0;
         const { data: currentIntent } = await supabase
           .from("checkout_intents")
           .select("billing_address")
@@ -45,6 +48,9 @@ export async function POST(request) {
             customer_phone: customerDetails.phone || null,
             ...(shippingDetails ? { shipping_address: shippingDetails } : {}),
             ...(billingAddress ? { billing_address: { ...billingAddress, ...(saveAddress !== undefined ? { saveAddress } : {}) } } : {}),
+            discount_cents: discountCents,
+            tax_cents: taxCents,
+            ...(totalCents ? { total_cents: totalCents } : {}),
             updated_at: new Date().toISOString(),
           })
           .eq("id", checkoutIntentId);

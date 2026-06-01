@@ -60,6 +60,10 @@ export default async function Page({ params }) {
             <strong>{moneyFromCents(order.total_cents)}</strong>
           </div>
           <div>
+            <span>Tax</span>
+            <strong>{moneyFromCents(order.tax_cents)}</strong>
+          </div>
+          <div>
             <span>Tracking</span>
             <strong>{order.tracking_number || "Pending"}</strong>
           </div>
