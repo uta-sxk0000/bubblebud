@@ -94,6 +94,7 @@ export function CartPage() {
   const effectiveCustomer = { ...customer, email: account?.email || customer.email };
   const isLoggedInCheckout = Boolean(account);
   const effectiveCheckoutMode = isLoggedInCheckout ? "account" : checkoutMode;
+  const isGuestCheckout = !account && checkoutMode === "guest";
 
   useEffect(() => {
     if (account?.email) {
@@ -136,6 +137,8 @@ export function CartPage() {
 
   const addressReady = (address) => Boolean(address.line1?.trim() && address.city?.trim() && address.state?.trim() && address.postalCode?.trim());
   const validateCheckout = () => {
+    if (isGuestCheckout) return "";
+
     if (!customer.name.trim() || !effectiveCustomer.email.trim()) {
       return "Please enter your name and email before continuing.";
     }
@@ -164,13 +167,13 @@ export function CartPage() {
     startCheckout({
       provider,
       checkoutMode: effectiveCheckoutMode,
-      customer: {
+      customer: isGuestCheckout ? undefined : {
         name: customer.name.trim(),
         email: effectiveCustomer.email.trim(),
         phone: customer.phone.trim(),
       },
-      shippingAddress,
-      billingAddress: sameBilling ? shippingAddress : billingAddress,
+      shippingAddress: isGuestCheckout ? undefined : shippingAddress,
+      billingAddress: isGuestCheckout ? undefined : sameBilling ? shippingAddress : billingAddress,
       discountCode,
       saveAddress: Boolean(account && saveAddress),
     });
@@ -230,26 +233,35 @@ export function CartPage() {
               </button>
             </div>
           ) : null}
-          <CustomerInformationCard
-            account={account}
-            checkoutMode={effectiveCheckoutMode}
-            customer={customer}
-            effectiveCustomer={effectiveCustomer}
-            signOut={signOut}
-            updateCustomer={updateCustomer}
-          />
-          <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} savedAddresses={savedAddresses} applyAddress={applyAddress} listId="shipping-addresses" />
-          {account ? (
-            <label className="check-row">
-              <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} />
-              <span>Save this address for future orders</span>
-            </label>
-          ) : null}
-          <label className="check-row">
-            <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
-            <span>Billing address is the same as shipping</span>
-          </label>
-          {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} savedAddresses={savedAddresses} applyAddress={null} listId="billing-addresses" /> : null}
+          {isGuestCheckout ? (
+            <div className="checkout-section guest-fast-card">
+              <h3>Fast guest checkout</h3>
+              <p className="form-note">No BubbleBud account form needed. Your email, shipping address, payment details, and tax calculation are handled securely on the payment page.</p>
+            </div>
+          ) : (
+            <>
+              <CustomerInformationCard
+                account={account}
+                checkoutMode={effectiveCheckoutMode}
+                customer={customer}
+                effectiveCustomer={effectiveCustomer}
+                signOut={signOut}
+                updateCustomer={updateCustomer}
+              />
+              <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} savedAddresses={savedAddresses} applyAddress={applyAddress} listId="shipping-addresses" />
+              {account ? (
+                <label className="check-row">
+                  <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} />
+                  <span>Save this address for future orders</span>
+                </label>
+              ) : null}
+              <label className="check-row">
+                <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
+                <span>Billing address is the same as shipping</span>
+              </label>
+              {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} savedAddresses={savedAddresses} applyAddress={null} listId="billing-addresses" /> : null}
+            </>
+          )}
           <PaymentMethodSelector provider={provider} setProvider={setProvider} />
           <label className="discount-field">
             <span>Discount code</span>
