@@ -194,16 +194,20 @@ export function CommerceProvider({ children }) {
     setCheckoutError("");
     setCheckoutLoading(true);
     try {
+      const checkoutCustomer = customer
+        ? {
+            ...customer,
+            email: checkoutMode === "account" ? user?.email || customer.email : customer.email,
+          }
+        : undefined;
+
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider,
           checkoutMode,
-          customer: {
-            ...customer,
-            email: checkoutMode === "account" ? user?.email || customer?.email : customer?.email,
-          },
+          ...(checkoutCustomer ? { customer: checkoutCustomer } : {}),
           shippingAddress,
           billingAddress,
           discountCode,

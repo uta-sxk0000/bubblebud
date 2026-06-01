@@ -128,6 +128,10 @@ export function CartPage() {
       .catch(() => setSavedAddresses([]));
   }, [account]);
 
+  useEffect(() => {
+    setCheckoutMessage("");
+  }, [checkoutMode, provider]);
+
   const updateCustomer = (field, value) => setCustomer((current) => ({ ...current, [field]: value }));
   const updateShipping = (field, value) => setShippingAddress((current) => ({ ...current, [field]: value }));
   const updateBilling = (field, value) => setBillingAddress((current) => ({ ...current, [field]: value }));
