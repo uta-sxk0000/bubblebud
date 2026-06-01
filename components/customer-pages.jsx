@@ -352,9 +352,12 @@ function PaymentLogo({ type }) {
   if (type === "paypal") {
     return (
       <span className="payment-logo paypal-logo" aria-label={labels[type]}>
-        <svg viewBox="0 0 92 28" role="img" aria-hidden="true">
-          <text x="3" y="20" fontFamily="Arial, sans-serif" fontSize="20" fontWeight="800" fill="#003087">Pay</text>
-          <text x="42" y="20" fontFamily="Arial, sans-serif" fontSize="20" fontWeight="800" fill="#009cde">Pal</text>
+        <svg viewBox="0 0 154 40" role="img" aria-hidden="true">
+          <path d="M13.2 3.4h18.4c8.8 0 14.5 5.2 13.4 13.5-1.2 9.1-7.9 14.2-17 14.2h-6.6l-1.4 8.1H8.1L13.2 3.4Z" fill="#253b80" />
+          <path d="M18.5 10.6h18.2c8.2 0 13.3 5 12.1 12.6-1.2 8.2-7.5 12.7-15.9 12.7h-6.4l-1.2 7.1H13.4l5.1-32.4Z" fill="#179bd7" opacity="0.92" />
+          <path d="M22.1 12.7h10.8c4.7 0 7.4 2.2 6.9 5.9-.5 3.9-3.8 6.1-8.4 6.1h-7.1l-1.3 8.1h-8.3l7.4-20.1Z" fill="#253b80" opacity="0.88" />
+          <text x="58" y="27" fontFamily="Arial, Helvetica, sans-serif" fontSize="25" fontWeight="900" fontStyle="italic" fill="#253b80">Pay</text>
+          <text x="104" y="27" fontFamily="Arial, Helvetica, sans-serif" fontSize="25" fontWeight="900" fontStyle="italic" fill="#179bd7">Pal</text>
         </svg>
       </span>
     );
