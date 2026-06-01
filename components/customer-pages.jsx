@@ -393,12 +393,8 @@ function PaymentMethodSelector({ provider, setProvider }) {
           </div>
         </button>
         <button className={provider === "paypal" ? "payment-method-card is-active" : "payment-method-card"} type="button" role="radio" aria-checked={provider === "paypal"} onClick={() => setProvider("paypal")}>
-          <div className="payment-method-top">
+          <div className="payment-method-top paypal-only">
             <PaymentLogo type="paypal" />
-            <div>
-              <strong>PayPal</strong>
-              <p>Pay securely with PayPal.</p>
-            </div>
           </div>
         </button>
       </div>

@@ -1611,6 +1611,10 @@ button:disabled {
   align-items: center;
 }
 
+.payment-method-top.paypal-only {
+  grid-template-columns: auto;
+}
+
 .payment-method-icon {
   display: grid;
   place-items: center;
