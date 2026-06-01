@@ -41,6 +41,23 @@ function seedProductRow(product) {
   };
 }
 
+function checkoutValidationMessage(error) {
+  const paths = new Set((error.issues || []).map((issue) => issue.path?.join(".")));
+  const hasPath = (prefix) => [...paths].some((path) => path === prefix || path.startsWith(`${prefix}.`));
+
+  if (hasPath("customer.name") || hasPath("customer.email") || hasPath("customer")) {
+    return "Please enter your name and email before continuing.";
+  }
+  if (hasPath("shippingAddress")) {
+    return "Please complete your shipping address before continuing.";
+  }
+  if (hasPath("billingAddress")) {
+    return "Please complete your billing address before continuing.";
+  }
+
+  return "Please check your checkout details before continuing.";
+}
+
 export async function POST(request) {
   try {
     rateLimit(request, { key: "checkout", limit: 8, windowMs: 60_000 });
@@ -52,7 +69,7 @@ export async function POST(request) {
   try {
     payload = checkoutSchema.parse(await request.json());
   } catch (error) {
-    return jsonError(error.message, 422);
+    return jsonError(checkoutValidationMessage(error), 422);
   }
 
   const user = await getCurrentUser();
