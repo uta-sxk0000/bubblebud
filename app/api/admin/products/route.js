@@ -14,6 +14,10 @@ const productSchema = z.object({
   sku: z.string().min(1),
   inventoryQuantity: z.number().int().min(0),
   images: z.array(z.string()).default([]),
+  variants: z.array(z.object({
+    name: z.string().min(1),
+    options: z.array(z.string().min(1)).min(1),
+  })).default([]),
   tags: z.array(z.string()).default([]),
   active: z.boolean().default(true),
 });
@@ -50,6 +54,7 @@ export async function POST(request) {
         inventory_quantity: payload.inventoryQuantity,
         stock_status: payload.inventoryQuantity === 0 ? "out_of_stock" : payload.inventoryQuantity <= 5 ? "low_stock" : "in_stock",
         images: payload.images,
+        variants: payload.variants,
         tags: payload.tags,
         active: payload.active,
       })

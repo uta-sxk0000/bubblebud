@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { products } from "../lib/products.js";
+import { getVariantGroups, products } from "../lib/products.js";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -25,7 +25,7 @@ const rows = products.map((product) => ({
   inventory_quantity: product.badge === "Low Stock" ? 4 : 25,
   stock_status: product.badge === "Low Stock" ? "low_stock" : "in_stock",
   images: product.gallery,
-  variants: product.variants.map((variant, index) => ({ name: variant, color: product.colors[index] || product.colors[0] || variant })),
+  variants: getVariantGroups(product),
   tags: product.tags,
   featured: ["New", "New Arrival", "Trending"].includes(product.badge),
   best_seller: product.badge === "Best Seller",

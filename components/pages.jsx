@@ -29,7 +29,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { categories, formatMoney, getRelatedProducts, getReviewSummary, products } from "@/lib/products";
+import { categories, formatMoney, formatVariantSelection, getRelatedProducts, getReviewSummary, getVariantGroups, products } from "@/lib/products";
 import { moneyFromCents } from "@/lib/commerce";
 import { useCommerce } from "@/components/commerce-context";
 import { TrustStrip } from "@/components/site-frame";
@@ -409,13 +409,20 @@ function FilterPanel({ category, maxPrice, query, setCategory, setMaxPrice, setQ
 
 export function ProductPage({ product }) {
   const { addRecentlyViewed, addToCart, recent } = useCommerce();
+  const variantGroups = getVariantGroups(product);
+  const initialVariantSelection = () => Object.fromEntries(variantGroups.map((group) => [group.name, group.options[0]]));
   const [image, setImage] = useState(product.image);
   const [quantity, setQuantity] = useState(1);
-  const [variant, setVariant] = useState(product.variants[0]);
+  const [variantSelection, setVariantSelection] = useState(initialVariantSelection);
   const [tab, setTab] = useState("Description");
+  const selectedVariant = formatVariantSelection(variantSelection);
 
   useEffect(() => {
     addRecentlyViewed(product.id);
+  }, [product.id]);
+
+  useEffect(() => {
+    setVariantSelection(initialVariantSelection());
   }, [product.id]);
 
   const related = getRelatedProducts(product, 4);
@@ -458,26 +465,23 @@ export function ProductPage({ product }) {
           </div>
           <p>{product.description}</p>
 
-          <div className="option-group">
-            <span>Variant</span>
-            <div>
-              {product.variants.map((item) => (
-                <button className={variant === item ? "is-active" : ""} type="button" key={item} onClick={() => setVariant(item)}>
-                  {item}
-                </button>
-              ))}
+          {variantGroups.map((group) => (
+            <div className="option-group" key={group.name}>
+              <span>{group.name}</span>
+              <div>
+                {group.options.map((item) => (
+                  <button
+                    className={variantSelection[group.name] === item ? "is-active" : ""}
+                    type="button"
+                    key={item}
+                    onClick={() => setVariantSelection((current) => ({ ...current, [group.name]: item }))}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-          <div className="option-group">
-            <span>Color</span>
-            <div>
-              {product.colors.map((item) => (
-                <button type="button" key={item}>
-                  {item}
-                </button>
-              ))}
-            </div>
-          </div>
+          ))}
 
           <div className="purchase-row">
             <div className="quantity-stepper">
@@ -489,11 +493,11 @@ export function ProductPage({ product }) {
                 +
               </button>
             </div>
-            <button className="primary-button" type="button" onClick={() => addToCart(product, quantity, variant)}>
+            <button className="primary-button" type="button" onClick={() => addToCart(product, quantity, selectedVariant)}>
               Add to cart
             </button>
           </div>
-          <button className="buy-now-button" type="button" onClick={() => addToCart(product, quantity, variant)}>
+          <button className="buy-now-button" type="button" onClick={() => addToCart(product, quantity, selectedVariant)}>
             Buy now
           </button>
           <TrustStrip />
@@ -508,7 +512,7 @@ export function ProductPage({ product }) {
 
       <div className="mobile-purchase-bar">
         <span>{formatMoney(product.price)}</span>
-        <button type="button" onClick={() => addToCart(product, quantity, variant)}>
+        <button type="button" onClick={() => addToCart(product, quantity, selectedVariant)}>
           Add to cart
         </button>
       </div>
@@ -549,8 +553,9 @@ function ProductTabs({ product, active, setActive }) {
       list: [
         ...product.details,
         `Category: ${product.category}`,
-        `Available option: ${product.variants.join(", ")}`,
-        `Color/finish: ${product.colors.join(", ")}`,
+        ...(getVariantGroups(product).length
+          ? getVariantGroups(product).map((group) => `${group.name}: ${group.options.join(", ")}`)
+          : ["Options: No selection needed"]),
       ],
     },
     Shipping: {

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
+import { getDefaultVariant } from "@/lib/products";
 
 const CART_KEY = "bubblebud-next-cart";
 const WISHLIST_KEY = "bubblebud-next-wishlist";
@@ -101,7 +102,7 @@ export function CommerceProvider({ children }) {
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0), [cart]);
 
-  const addToCart = (product, quantity = 1, variant = product.variants?.[0] || "Default") => {
+  const addToCart = (product, quantity = 1, variant = getDefaultVariant(product)) => {
     setCart((items) => {
       const key = `${product.id}:${variant}`;
       const current = items.find((item) => item.key === key);

@@ -748,6 +748,7 @@ function ProductManager() {
     sku: "",
     inventoryQuantity: 10,
     images: "",
+    variants: "",
     tags: "",
     active: true,
   });
@@ -758,6 +759,15 @@ function ProductManager() {
   const save = (event) => {
     event.preventDefault();
     setMessage("");
+    let variants = [];
+    try {
+      variants = form.variants.trim() ? JSON.parse(form.variants) : [];
+      if (!Array.isArray(variants)) throw new Error("Variants must be a JSON array.");
+    } catch (error) {
+      setMessage(error.message || "Variants must be valid JSON.");
+      return;
+    }
+
     fetch("/api/admin/products", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -766,6 +776,7 @@ function ProductManager() {
         priceCents: Number(form.priceCents),
         inventoryQuantity: Number(form.inventoryQuantity),
         images: form.images.split("\n").map((item) => item.trim()).filter(Boolean),
+        variants,
         tags: form.tags.split(",").map((item) => item.trim()).filter(Boolean),
       }),
     })
@@ -790,6 +801,11 @@ function ProductManager() {
         <input required value={form.sku} onChange={(event) => update("sku", event.target.value)} placeholder="SKU" />
         <input required type="number" value={form.inventoryQuantity} onChange={(event) => update("inventoryQuantity", event.target.value)} placeholder="Inventory quantity" />
         <textarea value={form.images} onChange={(event) => update("images", event.target.value)} placeholder="Image URLs, one per line" />
+        <textarea
+          value={form.variants}
+          onChange={(event) => update("variants", event.target.value)}
+          placeholder='Variants JSON, e.g. [{"name":"Design","options":["My Melody","Bunny"]}]'
+        />
         <input value={form.tags} onChange={(event) => update("tags", event.target.value)} placeholder="Tags, comma separated" />
         <button className="primary-button" type="submit">Save product</button>
         {message ? <p className={message.includes("saved") ? "form-note" : "form-error"}>{message}</p> : null}

@@ -5,7 +5,7 @@ import { createStripe } from "@/lib/stripe";
 import { calculateShipping } from "@/lib/commerce";
 import { getSiteUrl } from "@/lib/env";
 import { createPayPalOrder } from "@/lib/paypal";
-import { products as seedProducts } from "@/lib/products";
+import { getAllowedVariantValues, getVariantGroups, products as seedProducts } from "@/lib/products";
 import { rateLimit } from "@/lib/rate-limit";
 
 function absoluteImageUrl(image) {
@@ -30,7 +30,7 @@ function seedProductRow(product) {
     inventory_quantity: product.badge === "Low Stock" ? 4 : 25,
     stock_status: product.badge === "Low Stock" ? "low_stock" : "in_stock",
     images: product.gallery,
-    variants: product.variants.map((variant, index) => ({ name: variant, color: product.colors[index] || product.colors[0] || variant })),
+    variants: getVariantGroups(product),
     tags: product.tags,
     featured: ["New", "New Arrival", "Trending"].includes(product.badge),
     best_seller: product.badge === "Best Seller",
@@ -86,7 +86,7 @@ export async function POST(request) {
   const productIds = [...new Set(payload.items.map((item) => item.productId))];
   const { data: products, error: productError } = await supabase
     .from("products")
-    .select("id,title,sku,price_cents,sale_price_cents,inventory_quantity,stock_status,images,active")
+    .select("id,title,sku,price_cents,sale_price_cents,inventory_quantity,stock_status,images,variants,active")
     .in("id", productIds)
     .eq("active", true);
 
@@ -117,6 +117,12 @@ export async function POST(request) {
       return jsonError(`${product.title} does not have enough stock.`, 409);
     }
 
+    const selectedVariant = item.variant || "Default";
+    const allowedVariants = getAllowedVariantValues(product);
+    if (allowedVariants.size && !allowedVariants.has(selectedVariant)) {
+      return jsonError(`${selectedVariant} is not available for ${product.title}.`, 409);
+    }
+
     const unitAmount = product.sale_price_cents || product.price_cents;
     const totalCents = unitAmount * item.quantity;
 
@@ -124,7 +130,7 @@ export async function POST(request) {
       product_id: product.id,
       product_title: product.title,
       sku: product.sku,
-      variant: item.variant || "Default",
+      variant: selectedVariant,
       quantity: item.quantity,
       unit_price_cents: unitAmount,
       total_cents: totalCents,
@@ -136,7 +142,7 @@ export async function POST(request) {
         currency: "usd",
         unit_amount: unitAmount,
         product_data: {
-          name: product.title,
+          name: selectedVariant === "Default" ? product.title : `${product.title} (${selectedVariant})`,
           images: absoluteImageUrl(product.images?.[0]),
           metadata: {
             product_id: product.id,
