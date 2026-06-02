@@ -194,16 +194,24 @@ export async function POST(request) {
   }
 
   if (payload.provider === "paypal") {
-    const paypalOrder = await createPayPalOrder({
-      checkoutIntentId: checkoutIntent.id,
-      items: intentItems,
-      subtotalCents,
-      shippingCents,
-      totalCents,
-      currency: "usd",
-    });
+    let paypalOrder;
+
+    try {
+      paypalOrder = await createPayPalOrder({
+        checkoutIntentId: checkoutIntent.id,
+        items: intentItems,
+        subtotalCents,
+        shippingCents,
+        totalCents,
+        currency: "usd",
+      });
+    } catch (error) {
+      console.error("PayPal checkout failed", error);
+      return jsonError("PayPal checkout is temporarily unavailable. Please try card or wallet checkout.", 502);
+    }
+
     const approveUrl = paypalOrder.links?.find((link) => link.rel === "approve")?.href;
-    if (!approveUrl) return jsonError("PayPal did not return an approval URL.", 502);
+    if (!approveUrl) return jsonError("PayPal checkout is temporarily unavailable. Please try card or wallet checkout.", 502);
 
     await supabase
       .from("checkout_intents")

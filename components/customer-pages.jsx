@@ -641,8 +641,18 @@ export function OrderResultPage({ status }) {
       body: JSON.stringify({ orderId: token }),
     })
       .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "PayPal capture failed.");
+        const text = await response.text();
+        let data = {};
+
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = {};
+          }
+        }
+
+        if (!response.ok) throw new Error(data.error || "PayPal capture failed. Please contact support if you completed payment.");
         setPaypalState({ loading: false, message: "PayPal confirmed the payment. Your order email will arrive after webhook verification." });
       })
       .catch((error) => setPaypalState({ loading: false, message: error.message }));

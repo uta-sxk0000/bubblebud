@@ -221,8 +221,19 @@ export function CommerceProvider({ children }) {
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Checkout could not start.");
+      const responseText = await response.text();
+      let data = {};
+
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = {};
+        }
+      }
+
+      if (!response.ok) throw new Error(data.error || "Checkout could not start. Please try again.");
+      if (!data.url) throw new Error("Checkout could not start. Please try again.");
       window.location.href = data.url;
     } catch (error) {
       setCheckoutError(error.message);
