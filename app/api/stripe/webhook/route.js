@@ -29,15 +29,16 @@ export async function POST(request) {
         const billingAddress = customerDetails.address
           ? { name: customerDetails.name || "", address: customerDetails.address }
           : null;
-        const taxCents = session.total_details?.amount_tax || 0;
+        const stripeTaxCents = session.total_details?.amount_tax || 0;
         const discountCents = session.total_details?.amount_discount || 0;
-        const totalCents = session.amount_total || 0;
         const { data: currentIntent } = await supabase
           .from("checkout_intents")
-          .select("billing_address")
+          .select("billing_address,tax_cents,total_cents")
           .eq("id", checkoutIntentId)
           .maybeSingle();
         const saveAddress = currentIntent?.billing_address?.saveAddress;
+        const taxCents = stripeTaxCents || currentIntent?.tax_cents || 0;
+        const totalCents = session.amount_total || currentIntent?.total_cents || 0;
 
         await supabase
           .from("checkout_intents")

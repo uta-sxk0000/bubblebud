@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
-import { getDefaultVariant } from "@/lib/products";
+import { getDefaultVariant, getVariantGroups, getVariantImages } from "@/lib/products";
 
 const CART_KEY = "bubblebud-next-cart";
 const WISHLIST_KEY = "bubblebud-next-wishlist";
@@ -26,6 +26,21 @@ const writeStorage = (key, value) => {
     window.localStorage.setItem(key, JSON.stringify(value));
   }
 };
+
+function variantSelectionFromCartLabel(product, variant) {
+  const groups = getVariantGroups(product);
+  if (!groups.length || !variant || variant === "Default") return {};
+
+  const selection = {};
+  for (const group of groups) {
+    const prefix = `${group.name}: `;
+    const label = variant.startsWith(prefix) ? variant.slice(prefix.length) : variant;
+    const match = group.options.find((option) => option.label === label);
+    if (match) selection[group.name] = match.label;
+  }
+
+  return selection;
+}
 
 export function CommerceProvider({ children }) {
   const [supabase] = useState(() => createBrowserSupabase());
@@ -109,7 +124,9 @@ export function CommerceProvider({ children }) {
       if (current) {
         return items.map((item) => (item.key === key ? { ...item, quantity: item.quantity + quantity } : item));
       }
-      return [{ key, product, quantity, variant }, ...items];
+      const variantImages = getVariantImages(product, variantSelectionFromCartLabel(product, variant));
+      const cartProduct = variantImages[0] ? { ...product, image: variantImages[0] } : product;
+      return [{ key, product: cartProduct, quantity, variant }, ...items];
     });
     setCartOpen(true);
   };

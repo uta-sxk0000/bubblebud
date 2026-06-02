@@ -7,6 +7,7 @@ import { getSiteUrl } from "@/lib/env";
 import { createPayPalOrder } from "@/lib/paypal";
 import { getAllowedVariantValues, getVariantGroups, products as seedProducts } from "@/lib/products";
 import { rateLimit } from "@/lib/rate-limit";
+import { calculateStripeTax } from "@/lib/tax";
 
 function absoluteImageUrl(image) {
   if (!image) return undefined;
@@ -79,8 +80,8 @@ export async function POST(request) {
   const emptyAddress = { line1: "", line2: "", city: "", state: "", postalCode: "", country: "US" };
   const supabase = createAdminSupabase();
 
-  if (isAccountCheckout && (!payload.customer?.name || !payload.shippingAddress || !payload.billingAddress)) {
-    return jsonError("Customer and shipping details are required for logged-in checkout.", 422);
+  if (!payload.customer?.name || !payload.customer?.email || !payload.shippingAddress || !payload.billingAddress) {
+    return jsonError("Please enter your name, email, and shipping address before continuing.", 422);
   }
 
   const productIds = [...new Set(payload.items.map((item) => item.productId))];
@@ -156,7 +157,21 @@ export async function POST(request) {
   const subtotalCents = intentItems.reduce((sum, item) => sum + item.total_cents, 0);
   const shippingCents = calculateShipping(subtotalCents);
   const discountCents = 0;
-  const taxCents = 0;
+  let taxQuote;
+
+  try {
+    taxQuote = await calculateStripeTax({
+      items: intentItems,
+      shippingAddress: payload.shippingAddress,
+      shippingCents,
+      currency: "usd",
+    });
+  } catch (error) {
+    console.error("Stripe Tax checkout calculation failed", error);
+    return jsonError("Tax could not be calculated for this address. Please check the address and try again.", 502);
+  }
+
+  const taxCents = taxQuote.taxCents;
   const totalCents = subtotalCents - discountCents + taxCents + shippingCents;
 
   const { data: checkoutIntent, error: intentError } = await supabase
@@ -193,6 +208,17 @@ export async function POST(request) {
     });
   }
 
+  if (taxCents > 0) {
+    stripeLineItems.push({
+      quantity: 1,
+      price_data: {
+        currency: "usd",
+        unit_amount: taxCents,
+        product_data: { name: "Sales tax" },
+      },
+    });
+  }
+
   if (payload.provider === "paypal") {
     let paypalOrder;
 
@@ -202,6 +228,7 @@ export async function POST(request) {
         items: intentItems,
         subtotalCents,
         shippingCents,
+        taxCents,
         totalCents,
         currency: "usd",
       });
@@ -227,16 +254,14 @@ export async function POST(request) {
     ...(shouldPrefillStripeEmail ? { customer_email: checkoutEmail } : {}),
     line_items: stripeLineItems,
     allow_promotion_codes: true,
-    automatic_tax: { enabled: true },
-    billing_address_collection: "required",
-    shipping_address_collection: {
-      allowed_countries: ["US"],
-    },
+    automatic_tax: { enabled: false },
+    billing_address_collection: "auto",
     metadata: {
       checkout_intent_id: checkoutIntent.id,
       user_id: isAccountCheckout ? user?.id || "" : "",
       save_address: isAccountCheckout && payload.saveAddress ? "true" : "false",
       guest_email: isAccountCheckout ? "" : checkoutEmail,
+      stripe_tax_calculation_id: taxQuote.calculationId || "",
     },
     success_url: `${getSiteUrl()}/order-success?provider=stripe&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${getSiteUrl()}/order-failed?provider=stripe&checkout=${checkoutIntent.id}`,

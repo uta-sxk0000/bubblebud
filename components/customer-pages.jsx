@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { BarChart3, Box, CheckCircle2, CreditCard, Heart, LockKeyhole, PackageCheck, ShieldAlert, Star, Users } from "lucide-react";
+import { BarChart3, Box, CheckCircle2, CreditCard, Heart, LockKeyhole, PackageCheck, ShieldAlert, ShieldCheck, Star, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatMoney, products } from "@/lib/products";
 import { AccountPage, ProductGrid } from "@/components/pages";
@@ -81,7 +81,6 @@ function parseGoogleAddress(place) {
 export function CartPage() {
   const { account, cart, checkoutError, checkoutLoading, removeFromCart, signOut, startCheckout, subtotal, updateCartQuantity } = useCommerce();
   const [provider, setProvider] = useState("stripe");
-  const [checkoutMode, setCheckoutMode] = useState("guest");
   const [customer, setCustomer] = useState({ name: account?.name || "", email: account?.email || "", phone: "" });
   const [shippingAddress, setShippingAddress] = useState({ line1: "", line2: "", city: "", state: "", postalCode: "", country: "US" });
   const [billingAddress, setBillingAddress] = useState({ line1: "", line2: "", city: "", state: "", postalCode: "", country: "US" });
@@ -90,16 +89,20 @@ export function CartPage() {
   const [saveAddress, setSaveAddress] = useState(Boolean(account));
   const [discountCode, setDiscountCode] = useState("");
   const [checkoutMessage, setCheckoutMessage] = useState("");
+  const [taxQuote, setTaxQuote] = useState({ loading: false, error: "", taxCents: 0, totalCents: 0 });
   const shipping = subtotal > 50 || subtotal === 0 ? 0 : 5.95;
   const effectiveCustomer = { ...customer, email: account?.email || customer.email };
   const isLoggedInCheckout = Boolean(account);
-  const effectiveCheckoutMode = isLoggedInCheckout ? "account" : checkoutMode;
-  const isGuestCheckout = !account && checkoutMode === "guest";
+  const effectiveCheckoutMode = isLoggedInCheckout ? "account" : "guest";
+  const subtotalCents = Math.round(subtotal * 100);
+  const shippingCents = Math.round(shipping * 100);
+  const taxCents = taxQuote.taxCents || 0;
+  const totalCents = subtotalCents + shippingCents + taxCents;
+  const cartSignature = JSON.stringify(cart.map((item) => ({ productId: item.product.id, variant: item.variant, quantity: item.quantity })));
 
   useEffect(() => {
     if (account?.email) {
       setCustomer((current) => ({ ...current, name: current.name || account.name || "", email: account.email }));
-      setCheckoutMode("account");
       setSaveAddress(true);
     }
   }, [account]);
@@ -130,7 +133,7 @@ export function CartPage() {
 
   useEffect(() => {
     setCheckoutMessage("");
-  }, [checkoutMode, provider]);
+  }, [provider]);
 
   const updateCustomer = (field, value) => setCustomer((current) => ({ ...current, [field]: value }));
   const updateShipping = (field, value) => setShippingAddress((current) => ({ ...current, [field]: value }));
@@ -140,11 +143,64 @@ export function CartPage() {
   };
 
   const addressReady = (address) => Boolean(address.line1?.trim() && address.city?.trim() && address.state?.trim() && address.postalCode?.trim());
-  const validateCheckout = () => {
-    if (isGuestCheckout) return "";
 
+  useEffect(() => {
+    if (!cart.length || !addressReady(shippingAddress)) {
+      setTaxQuote({ loading: false, error: "", taxCents: 0, totalCents: subtotalCents + shippingCents });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      setTaxQuote((current) => ({ ...current, loading: true, error: "" }));
+      fetch("/api/tax/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          shippingAddress,
+          items: cart.map((item) => ({
+            productId: item.product.id,
+            variant: item.variant,
+            quantity: item.quantity,
+          })),
+        }),
+      })
+        .then(async (response) => {
+          const text = await response.text();
+          let data = {};
+
+          if (text) {
+            try {
+              data = JSON.parse(text);
+            } catch {
+              data = {};
+            }
+          }
+
+          if (!response.ok) throw new Error(data.error || "Tax could not be calculated for this address.");
+          setTaxQuote({
+            loading: false,
+            error: "",
+            taxCents: data.taxCents || 0,
+            totalCents: data.totalCents || subtotalCents + shippingCents + (data.taxCents || 0),
+          });
+        })
+        .catch((error) => {
+          if (error.name === "AbortError") return;
+          setTaxQuote({ loading: false, error: error.message, taxCents: 0, totalCents: subtotalCents + shippingCents });
+        });
+    }, 350);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [cartSignature, shippingAddress.line1, shippingAddress.city, shippingAddress.state, shippingAddress.postalCode, shippingAddress.country, subtotalCents, shippingCents]);
+
+  const validateCheckout = () => {
     if (!customer.name.trim() || !effectiveCustomer.email.trim()) {
-      return "Please enter your name and email before continuing.";
+      return "Please enter your name and email to continue.";
     }
 
     if (!/^\S+@\S+\.\S+$/.test(effectiveCustomer.email.trim())) {
@@ -159,6 +215,14 @@ export function CartPage() {
       return "Please complete your billing address before continuing.";
     }
 
+    if (taxQuote.loading) {
+      return "Please wait while we calculate tax for your address.";
+    }
+
+    if (taxQuote.error) {
+      return taxQuote.error;
+    }
+
     return "";
   };
 
@@ -171,13 +235,13 @@ export function CartPage() {
     startCheckout({
       provider,
       checkoutMode: effectiveCheckoutMode,
-      customer: isGuestCheckout ? undefined : {
+      customer: {
         name: customer.name.trim(),
         email: effectiveCustomer.email.trim(),
         phone: customer.phone.trim(),
       },
-      shippingAddress: isGuestCheckout ? undefined : shippingAddress,
-      billingAddress: isGuestCheckout ? undefined : sameBilling ? shippingAddress : billingAddress,
+      shippingAddress,
+      billingAddress: sameBilling ? shippingAddress : billingAddress,
       discountCode,
       saveAddress: Boolean(account && saveAddress),
     });
@@ -189,15 +253,19 @@ export function CartPage() {
         <p className="eyebrow">Cart</p>
         <h1>Review your order before secure checkout.</h1>
       </div>
-      <div className="cart-page-grid">
+      <div className="cart-page-grid checkout-flow">
         <div className="cart-lines page-lines">
+          <div className="checkout-section-title cart-section-title">
+            <h2>Cart items</h2>
+            <p>{cart.length ? `${cart.length} item${cart.length === 1 ? "" : "s"} ready for checkout.` : "Your cart is waiting for something sweet."}</p>
+          </div>
           {cart.length ? (
             cart.map((item) => (
               <div className="cart-line" key={item.key}>
                 <img src={item.product.image} alt="" />
                 <div>
                   <strong>{item.product.title}</strong>
-                  <small>{item.variant}</small>
+                  <small>{item.variant === "Default" ? "Standard option" : item.variant}</small>
                   <div className="quantity-stepper">
                     <button type="button" onClick={() => updateCartQuantity(item.key, item.quantity - 1)}>-</button>
                     <span>{item.quantity}</span>
@@ -223,65 +291,40 @@ export function CartPage() {
           <div className="checkout-heading">
             <span><LockKeyhole size={16} /> Secure checkout</span>
             <h2>{account ? `Checkout as ${customer.name || account.name}` : "Secure checkout"}</h2>
-            <p>Secure checkout powered by Stripe and PayPal.</p>
+            <p>{account ? `Signed in as ${account.email}` : "Guest checkout with email receipt and order tracking."}</p>
           </div>
-          {!account ? (
-            <div className="checkout-mode-cards" role="radiogroup" aria-label="Checkout type">
-              <button className={checkoutMode === "guest" ? "is-active" : ""} type="button" onClick={() => setCheckoutMode("guest")}>
-                <strong>Guest checkout</strong>
-                <span>Fast checkout with email receipt and order tracking.</span>
-              </button>
-              <button className={checkoutMode === "account" ? "is-active" : ""} type="button" onClick={() => setCheckoutMode("account")}>
-                <strong>Create / use account</strong>
-                <span>Save wishlist, addresses, and order history.</span>
-              </button>
-            </div>
+          {!account ? <div className="checkout-account-prompt"><span>Checking out as guest</span><Link href="/login">Log in for saved addresses</Link></div> : null}
+          <CustomerInformationCard
+            account={account}
+            checkoutMode={effectiveCheckoutMode}
+            customer={customer}
+            effectiveCustomer={effectiveCustomer}
+            signOut={signOut}
+            updateCustomer={updateCustomer}
+          />
+          <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} savedAddresses={savedAddresses} applyAddress={applyAddress} listId="shipping-addresses" />
+          {account ? (
+            <label className="check-row">
+              <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} />
+              <span>Save this address for future orders</span>
+            </label>
           ) : null}
-          {isGuestCheckout ? (
-            <div className="checkout-section guest-fast-card">
-              <h3>Fast guest checkout</h3>
-              <p className="form-note">No BubbleBud account form needed. Your email, shipping address, payment details, and tax calculation are handled securely on the payment page.</p>
-            </div>
-          ) : (
-            <>
-              <CustomerInformationCard
-                account={account}
-                checkoutMode={effectiveCheckoutMode}
-                customer={customer}
-                effectiveCustomer={effectiveCustomer}
-                signOut={signOut}
-                updateCustomer={updateCustomer}
-              />
-              <AddressFields title="Shipping address" address={shippingAddress} update={updateShipping} savedAddresses={savedAddresses} applyAddress={applyAddress} listId="shipping-addresses" />
-              {account ? (
-                <label className="check-row">
-                  <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} />
-                  <span>Save this address for future orders</span>
-                </label>
-              ) : null}
-              <label className="check-row">
-                <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
-                <span>Billing address is the same as shipping</span>
-              </label>
-              {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} savedAddresses={savedAddresses} applyAddress={null} listId="billing-addresses" /> : null}
-            </>
-          )}
+          <label className="check-row">
+            <input type="checkbox" checked={sameBilling} onChange={(event) => setSameBilling(event.target.checked)} />
+            <span>Billing address is the same as shipping</span>
+          </label>
+          {!sameBilling ? <AddressFields title="Billing address" address={billingAddress} update={updateBilling} savedAddresses={savedAddresses} applyAddress={null} listId="billing-addresses" /> : null}
           <PaymentMethodSelector provider={provider} setProvider={setProvider} />
           <label className="discount-field">
             <span>Discount code</span>
             <input value={discountCode} onChange={(event) => setDiscountCode(event.target.value)} placeholder="Optional" />
           </label>
-          <dl>
-            <div><dt>Subtotal</dt><dd>{formatMoney(subtotal)}</dd></div>
-            <div><dt>Shipping</dt><dd>{shipping ? formatMoney(shipping) : "Free"}</dd></div>
-            <div><dt>Tax</dt><dd>{provider === "stripe" ? "Calculated by Stripe Tax" : "Calculated at checkout"}</dd></div>
-            <div className="total-row"><dt>Estimated total</dt><dd>{formatMoney(subtotal + shipping)}</dd></div>
-          </dl>
+          <OrderSummary subtotal={subtotal} shipping={shipping} taxCents={taxCents} totalCents={totalCents} taxLoading={taxQuote.loading} taxReady={addressReady(shippingAddress)} />
+          <CheckoutTrust />
           {checkoutMessage || checkoutError ? <p className="form-error">{checkoutMessage || checkoutError}</p> : null}
           <button className="primary-button" type="submit" disabled={!cart.length || checkoutLoading}>
-            {checkoutLoading ? "Opening secure payment..." : provider === "paypal" ? "Pay with PayPal" : "Pay by card or wallet"}
+            {checkoutLoading ? "Opening secure payment..." : provider === "paypal" ? "Complete purchase with PayPal" : "Complete purchase"}
           </button>
-          <CheckoutTrust />
         </form>
       </div>
     </section>
@@ -300,7 +343,7 @@ function CustomerInformationCard({ account, checkoutMode, customer, effectiveCus
         ) : checkoutMode === "account" ? (
           <p className="form-note">Create an account before checkout, or continue here and your order can still be tracked by email.</p>
         ) : (
-          <p className="form-note">Enter your details so we can confirm and track your order.</p>
+          <p className="form-note">Guest checkout. Enter your details once so we can confirm and track your order.</p>
         )}
       </div>
       {!account && checkoutMode === "account" ? (
@@ -322,6 +365,24 @@ function CustomerInformationCard({ account, checkoutMode, customer, effectiveCus
         <span>Phone optional</span>
         <input type="tel" autoComplete="tel" value={customer.phone} onChange={(event) => updateCustomer("phone", event.target.value)} placeholder="(555) 123-4567" />
       </label>
+    </div>
+  );
+}
+
+function OrderSummary({ shipping, subtotal, taxCents, taxLoading, taxReady, totalCents }) {
+  return (
+    <div className="order-summary-card">
+      <div className="checkout-section-title">
+        <h3>Order summary</h3>
+        <p>{taxReady ? "Tax is calculated by Stripe Tax from your shipping address." : "Enter your shipping address to calculate tax."}</p>
+      </div>
+      <dl>
+        <div><dt>Subtotal</dt><dd>{formatMoney(subtotal)}</dd></div>
+        <div><dt>Shipping</dt><dd>{shipping ? formatMoney(shipping) : "Free"}</dd></div>
+        <div><dt>Discount</dt><dd>$0.00</dd></div>
+        <div><dt>Tax</dt><dd>{taxLoading ? "Calculating..." : taxReady ? formatMoney(taxCents / 100) : "Enter address"}</dd></div>
+        <div className="total-row"><dt>Total</dt><dd>{formatMoney(totalCents / 100)}</dd></div>
+      </dl>
     </div>
   );
 }
@@ -404,15 +465,11 @@ function PaymentMethodSelector({ provider, setProvider }) {
 
 function CheckoutTrust() {
   return (
-    <div className="checkout-trust-footer">
-      <span>Accepted payments</span>
-      <div>
-        <PaymentLogo type="visa" />
-        <PaymentLogo type="mastercard" />
-        <PaymentLogo type="amex" />
-        <PaymentLogo type="discover" />
-        <PaymentLogo type="paypal" />
-      </div>
+    <div className="checkout-trust-grid" aria-label="Checkout security">
+      <span><LockKeyhole size={15} /> Secure Checkout</span>
+      <span><ShieldCheck size={15} /> SSL Protected</span>
+      <span><CheckCircle2 size={15} /> Stripe Verified</span>
+      <span><CheckCircle2 size={15} /> PayPal Verified</span>
     </div>
   );
 }

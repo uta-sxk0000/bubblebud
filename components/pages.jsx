@@ -458,7 +458,7 @@ export function ProductPage({ product }) {
             ))}
           </div>
           <div className="main-product-image">
-            <img src={image} alt={product.title} />
+            <img key={image} src={image} alt={product.title} />
           </div>
         </div>
 
