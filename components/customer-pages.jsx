@@ -804,7 +804,7 @@ function ProductManager() {
         <textarea
           value={form.variants}
           onChange={(event) => update("variants", event.target.value)}
-          placeholder='Variants JSON, e.g. [{"name":"Design","options":["My Melody","Bunny"]}]'
+          placeholder='Variants JSON, e.g. [{"name":"Design","options":[{"label":"Bunny","image":"/assets/products/example.jpg"}]}]'
         />
         <input value={form.tags} onChange={(event) => update("tags", event.target.value)} placeholder="Tags, comma separated" />
         <button className="primary-button" type="submit">Save product</button>

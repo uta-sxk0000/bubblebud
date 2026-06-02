@@ -29,7 +29,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { categories, formatMoney, formatVariantSelection, getRelatedProducts, getReviewSummary, getVariantGroups, products } from "@/lib/products";
+import { categories, formatMoney, formatVariantSelection, getRelatedProducts, getReviewSummary, getVariantGallery, getVariantGroups, getVariantImages, products } from "@/lib/products";
 import { moneyFromCents } from "@/lib/commerce";
 import { useCommerce } from "@/components/commerce-context";
 import { TrustStrip } from "@/components/site-frame";
@@ -410,12 +410,14 @@ function FilterPanel({ category, maxPrice, query, setCategory, setMaxPrice, setQ
 export function ProductPage({ product }) {
   const { addRecentlyViewed, addToCart, recent } = useCommerce();
   const variantGroups = getVariantGroups(product);
-  const initialVariantSelection = () => Object.fromEntries(variantGroups.map((group) => [group.name, group.options[0]]));
+  const initialVariantSelection = () => Object.fromEntries(variantGroups.map((group) => [group.name, group.options[0]?.label]));
   const [image, setImage] = useState(product.image);
   const [quantity, setQuantity] = useState(1);
   const [variantSelection, setVariantSelection] = useState(initialVariantSelection);
   const [tab, setTab] = useState("Description");
   const selectedVariant = formatVariantSelection(variantSelection);
+  const selectedVariantImages = useMemo(() => getVariantImages(product, variantSelection), [product, variantSelection]);
+  const visibleGallery = useMemo(() => getVariantGallery(product, variantSelection), [product, variantSelection]);
 
   useEffect(() => {
     addRecentlyViewed(product.id);
@@ -424,6 +426,14 @@ export function ProductPage({ product }) {
   useEffect(() => {
     setVariantSelection(initialVariantSelection());
   }, [product.id]);
+
+  useEffect(() => {
+    setImage(product.image);
+  }, [product.id]);
+
+  useEffect(() => {
+    if (selectedVariantImages.length) setImage(selectedVariantImages[0]);
+  }, [selectedVariant, product.id]);
 
   const related = getRelatedProducts(product, 4);
   const recentlyViewed = products.filter((item) => item.id !== product.id && recent.includes(item.id)).slice(0, 4);
@@ -441,7 +451,7 @@ export function ProductPage({ product }) {
       <div className="product-detail-layout">
         <div className="product-gallery">
           <div className="thumb-list">
-            {product.gallery.map((item, index) => (
+            {visibleGallery.map((item, index) => (
               <button className={image === item ? "is-active" : ""} type="button" key={item} onClick={() => setImage(item)}>
                 <img src={item} alt={`${product.title} thumbnail ${index + 1}`} />
               </button>
@@ -471,12 +481,12 @@ export function ProductPage({ product }) {
               <div>
                 {group.options.map((item) => (
                   <button
-                    className={variantSelection[group.name] === item ? "is-active" : ""}
+                    className={variantSelection[group.name] === item.label ? "is-active" : ""}
                     type="button"
-                    key={item}
-                    onClick={() => setVariantSelection((current) => ({ ...current, [group.name]: item }))}
+                    key={item.label}
+                    onClick={() => setVariantSelection((current) => ({ ...current, [group.name]: item.label }))}
                   >
-                    {item}
+                    {item.label}
                   </button>
                 ))}
               </div>
@@ -554,7 +564,7 @@ function ProductTabs({ product, active, setActive }) {
         ...product.details,
         `Category: ${product.category}`,
         ...(getVariantGroups(product).length
-          ? getVariantGroups(product).map((group) => `${group.name}: ${group.options.join(", ")}`)
+          ? getVariantGroups(product).map((group) => `${group.name}: ${group.options.map((option) => option.label).join(", ")}`)
           : ["Options: No selection needed"]),
       ],
     },

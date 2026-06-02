@@ -16,7 +16,14 @@ const productSchema = z.object({
   images: z.array(z.string()).default([]),
   variants: z.array(z.object({
     name: z.string().min(1),
-    options: z.array(z.string().min(1)).min(1),
+    options: z.array(z.union([
+      z.string().min(1),
+      z.object({
+        label: z.string().min(1),
+        image: z.string().min(1).optional(),
+        images: z.array(z.string().min(1)).optional(),
+      }),
+    ])).min(1),
   })).default([]),
   tags: z.array(z.string()).default([]),
   active: z.boolean().default(true),
